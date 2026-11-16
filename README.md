@@ -296,12 +296,28 @@ These are honestly unresolved. Do not pretend the specs closed them.
 
 ## How to use this repo
 
-This repository currently holds **architecture and company context**, not a running Next.js app. Do not expect `npm run dev` until an implementation phase creates the app.
+Product specs live in [`docs/`](./docs/). The Next.js 15 app lives in [`bridgewise-pwa/`](./bridgewise-pwa/). Node version (`.nvmrc`) and env template (`.env.example`) live **inside the app**, not at the repo root. There is a single `.gitignore` at the repo root.
+
+```bash
+cd bridgewise-pwa
+source ~/.nvm/nvm.sh && nvm use   # Node 22 from .nvmrc
+cp .env.example .env.local        # already created; keep keys out of git
+npm run dev
+```
 
 1. Read this README for canonical product rules.
 2. Read the source documents in the map above when you need depth.
-3. Build in the order given in **[`phrases.md`](./phrases.md)** — the phase-by-phase plan (scaffold, Dexie schema, capture, parser, confirm transaction, three tabs, PWA, optional sync).
+3. Build in the order given in **[`phrases.md`](./phrases.md)**.
 
-When implementation starts, the intended scaffold (Next.js App Router, TypeScript, Tailwind, Dexie, Serwist/next-pwa, Lucide, `@google/genai`) and env keys (`GEMINI_API_KEY`, optional `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`) are listed in the tech stack document. Follow `phrases.md` rather than inventing a parallel setup.
+### Deploy on Vercel (HTTPS)
+
+Public HTTPS is required for the service worker, Add to Home Screen, Share Target, and clipboard on a real phone. The Next.js app is the **`bridgewise-pwa`** subfolder, not the repo root.
+
+1. Import the Git repository at [vercel.com/new](https://vercel.com/new). Framework: **Next.js**.
+2. Set **Root Directory** to `bridgewise-pwa`.
+3. Environment Variables (Production and Preview): `GEMINI_API_KEY` only, server-side. Do **not** prefix `NEXT_PUBLIC_`. Do **not** add Stripe, maps, WhatsApp Business, or `NEXT_PUBLIC_SUPABASE_*` keys. Do not paste the real key into this README.
+4. Deploy, then on Android Chrome open the `https://…` URL → **Add to Home Screen** → share a WhatsApp chat into BridgeWise.
+
+Local production gate (Node 22, inside `bridgewise-pwa`): `npx tsc --noEmit && npm test && npm run build`.
 
 Nigeria, Naira, and WhatsApp social commerce are the default context for every screen and ID example. Window shoppers stay pending until the vendor confirms.

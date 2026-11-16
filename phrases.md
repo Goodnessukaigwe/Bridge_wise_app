@@ -64,8 +64,8 @@ A machine that can scaffold Next.js 15, run a local HTTPS-capable later deploy, 
 
 2. Create a Google AI Studio key for **Gemini** (used only from Phase 10). Do **not** put it in client code.
 3. Optional: create a Supabase project (used only in Phase 15).
-4. Work in `/home/vahalla/Desktop/Bridge_wise_app` (or a `bridgewise-pwa/` subfolder if you prefer a clean scaffold).
-5. Plan `.env.local` (create empty later; never commit):
+4. App tooling lives in `bridgewise-pwa/` (`.nvmrc`, `.env.example`). Repo root keeps `README.md`, `phrases.md`, `docs/`, and one `.gitignore`.
+5. Plan `.env.local` **inside the app** (create empty later; never commit):
 
    ```env
    GEMINI_API_KEY=
@@ -110,7 +110,7 @@ Phase 0.
    npm install dexie dexie-react-hooks @ducanh2912/next-pwa lucide-react @google/genai
    ```
 
-3. Create `.env.local` from Phase 0 keys (Gemini can wait until Phase 10). Add `.env*.local` to `.gitignore` if missing.
+3. Copy `bridgewise-pwa/.env.example` → `bridgewise-pwa/.env.local` (Gemini can wait until Phase 10). Repo-root `.gitignore` already ignores `.env*.local` and allows `.env.example`.
 4. Align with the documented tree (create empty folders now):
 
    ```text
