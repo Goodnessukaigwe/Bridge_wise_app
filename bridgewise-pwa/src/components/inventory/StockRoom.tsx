@@ -77,11 +77,16 @@ function parseMoney(raw: string): number {
   return Number(trimmed);
 }
 
+type ProductMode = "reseller" | "maker";
+
 type SkuFormState = {
   name: string;
   variant: string;
+  productMode: ProductMode;
   cost: string;
   sell: string;
+  batchCost: string;
+  batchQty: string;
   threshold: string;
   initialQty: string;
 };
@@ -90,8 +95,11 @@ function emptyForm(): SkuFormState {
   return {
     name: "",
     variant: "",
+    productMode: "reseller",
     cost: "",
     sell: "",
+    batchCost: "",
+    batchQty: "",
     threshold: String(LOW_STOCK_THRESHOLD),
     initialQty: "0",
   };
@@ -101,8 +109,11 @@ function formFromSku(sku: Sku): SkuFormState {
   return {
     name: sku.display_name,
     variant: variantFromSkuId(sku.sku_id),
+    productMode: sku.product_type === "maker" ? "maker" : "reseller",
     cost: String(sku.unit_cost_price),
     sell: String(sku.unit_selling_price),
+    batchCost: sku.batch_cost != null ? String(sku.batch_cost) : "",
+    batchQty: sku.batch_qty != null ? String(sku.batch_qty) : "",
     threshold: String(sku.low_stock_threshold),
     initialQty: String(sku.stock_qty),
   };
@@ -129,7 +140,14 @@ function SkuCard({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="font-semibold text-neutral-900">{sku.display_name}</p>
+            <div className="flex items-center gap-2">
+              <p className="font-semibold text-neutral-900">{sku.display_name}</p>
+              {sku.product_type === "maker" ? (
+                <span className="shrink-0 rounded-full border border-[#17104A] px-2 py-0.5 text-[10px] font-semibold text-[#17104A]">
+                  MADE
+                </span>
+              ) : null}
+            </div>
             <p className="mt-0.5 truncate font-mono text-xs text-neutral-500">
               {sku.sku_id}
             </p>
@@ -205,39 +223,48 @@ function SkuFormSheet({
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  const isMaker = form.productMode === "maker";
+  const batchCostNum = parseMoney(form.batchCost);
+  const batchQtyNum = parseNonNegativeInt(form.batchQty, 0);
+  const derivedUnitCost =
+    isMaker && batchQtyNum > 0 ? batchCostNum / batchQtyNum : 0;
+  const sellNum = parseMoney(form.sell);
+  const profitPreview = isMaker ? sellNum - derivedUnitCost : null;
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
+      const unitCost = isMaker ? derivedUnitCost : parseMoney(form.cost);
       if (creating) {
         await createSku({
           name: form.name,
           variant: form.variant,
-          unit_cost_price: parseMoney(form.cost),
-          unit_selling_price: parseMoney(form.sell),
-          low_stock_threshold: parseNonNegativeInt(
-            form.threshold,
-            LOW_STOCK_THRESHOLD,
-          ),
+          unit_cost_price: unitCost,
+          unit_selling_price: sellNum,
+          low_stock_threshold: parseNonNegativeInt(form.threshold, LOW_STOCK_THRESHOLD),
           initial_qty: parseNonNegativeInt(form.initialQty, 0),
+          product_type: form.productMode,
+          batch_cost: isMaker ? batchCostNum : null,
+          batch_qty: isMaker ? batchQtyNum : null,
         });
       } else {
         await updateSku({
           sku_id: sku.sku_id,
           name: form.name,
-          unit_cost_price: parseMoney(form.cost),
-          unit_selling_price: parseMoney(form.sell),
-          low_stock_threshold: parseNonNegativeInt(
-            form.threshold,
-            LOW_STOCK_THRESHOLD,
-          ),
+          unit_cost_price: unitCost,
+          unit_selling_price: sellNum,
+          low_stock_threshold: parseNonNegativeInt(form.threshold, LOW_STOCK_THRESHOLD),
+          product_type: form.productMode,
+          batch_cost: isMaker ? batchCostNum : null,
+          batch_qty: isMaker ? batchQtyNum : null,
         });
       }
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save SKU");
+      setError(err instanceof Error ? err.message : "Could not save product");
     } finally {
       setBusy(false);
     }
@@ -276,7 +303,7 @@ function SkuFormSheet({
             </button>
           </div>
           <form onSubmit={onSubmit} className="flex flex-col gap-3">
-          <label className="block text-xs font-medium text-neutral-600">
+          <label className="block text-xs font-medium text-[#6B6898]">
             Name
             <input
               required
@@ -286,7 +313,7 @@ function SkuFormSheet({
               autoComplete="off"
             />
           </label>
-          <label className="block text-xs font-medium text-neutral-600">
+          <label className="block text-xs font-medium text-[#6B6898]">
             Variant
             <input
               required
@@ -298,11 +325,73 @@ function SkuFormSheet({
               placeholder="Size42, Std, 8in"
             />
           </label>
-          <p className="font-mono text-[11px] text-neutral-500">
-            SKU ID {previewId}
+          <p className="font-mono text-[11px] text-[#9B97B8]">
+            ID {previewId}
           </p>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block text-xs font-medium text-neutral-600">
+
+          {/* Maker / reseller toggle */}
+          <div className="rounded-[10px] border border-[#E8E6F0] p-1 grid grid-cols-2 gap-1">
+            <button
+              type="button"
+              onClick={() => setField("productMode", "reseller")}
+              className={`rounded-[8px] py-2 text-xs font-semibold transition-colors ${form.productMode === "reseller" ? "bg-[#17104A] text-white" : "text-[#6B6898]"}`}
+            >
+              I buy &amp; resell
+            </button>
+            <button
+              type="button"
+              onClick={() => setField("productMode", "maker")}
+              className={`rounded-[8px] py-2 text-xs font-semibold transition-colors ${form.productMode === "maker" ? "bg-[#17104A] text-white" : "text-[#6B6898]"}`}
+            >
+              I make this
+            </button>
+          </div>
+
+          {isMaker ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-xs font-medium text-[#6B6898]">
+                  Batch cost (₦)
+                  <input
+                    required
+                    inputMode="decimal"
+                    value={form.batchCost}
+                    onChange={(e) => setField("batchCost", e.target.value)}
+                    className={`${fieldClass} mt-1`}
+                    placeholder="Total to make batch"
+                  />
+                </label>
+                <label className="block text-xs font-medium text-[#6B6898]">
+                  Units per batch
+                  <input
+                    required
+                    inputMode="numeric"
+                    value={form.batchQty}
+                    onChange={(e) => setField("batchQty", e.target.value)}
+                    className={`${fieldClass} mt-1`}
+                    placeholder="e.g. 20"
+                  />
+                </label>
+              </div>
+              {batchQtyNum > 0 && batchCostNum > 0 ? (
+                <p className="text-xs text-[#6B6898]">
+                  Unit cost ={" "}
+                  <span className="font-semibold text-[#0F0A2E]">
+                    ₦{derivedUnitCost.toFixed(2)}
+                  </span>
+                  {profitPreview != null && sellNum > 0 ? (
+                    <>
+                      {" "}· profit ={" "}
+                      <span className={`font-semibold ${profitPreview >= 0 ? "text-[#10B981]" : "text-red-600"}`}>
+                        ₦{profitPreview.toFixed(2)}
+                      </span>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <label className="block text-xs font-medium text-[#6B6898]">
               Cost (₦)
               <input
                 required
@@ -312,18 +401,19 @@ function SkuFormSheet({
                 className={`${fieldClass} mt-1`}
               />
             </label>
-            <label className="block text-xs font-medium text-neutral-600">
-              Sell (₦)
-              <input
-                required
-                inputMode="decimal"
-                value={form.sell}
-                onChange={(e) => setField("sell", e.target.value)}
-                className={`${fieldClass} mt-1`}
-              />
-            </label>
-          </div>
-          <label className="block text-xs font-medium text-neutral-600">
+          )}
+
+          <label className="block text-xs font-medium text-[#6B6898]">
+            Sell price (₦)
+            <input
+              required
+              inputMode="decimal"
+              value={form.sell}
+              onChange={(e) => setField("sell", e.target.value)}
+              className={`${fieldClass} mt-1`}
+            />
+          </label>
+          <label className="block text-xs font-medium text-[#6B6898]">
             Low-stock threshold
             <input
               required
@@ -334,7 +424,7 @@ function SkuFormSheet({
             />
           </label>
           {creating ? (
-            <label className="block text-xs font-medium text-neutral-600">
+            <label className="block text-xs font-medium text-[#6B6898]">
               Initial quantity
               <input
                 required
@@ -345,9 +435,8 @@ function SkuFormSheet({
               />
             </label>
           ) : (
-            <p className="text-sm text-neutral-600">
-              Qty {sku.stock_qty} — changes only via Confirm, return, or
-              restock.
+            <p className="text-sm text-[#6B6898]">
+              Qty {sku.stock_qty} — changes only via Confirm, return, or restock.
             </p>
           )}
           {error ? (

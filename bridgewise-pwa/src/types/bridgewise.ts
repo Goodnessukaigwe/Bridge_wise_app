@@ -45,6 +45,8 @@ export interface OrderLine {
   unit_selling_price: number;
 }
 
+export type ProductType = "reseller" | "maker";
+
 export interface Sku {
   sku_id: string;
   display_name: string;
@@ -55,6 +57,9 @@ export interface Sku {
   status_color: StockColor;
   /** Last restock batch size. Drives the 20% low-stock floor when set. */
   last_restock_qty?: number;
+  product_type?: ProductType;
+  batch_cost?: number | null;
+  batch_qty?: number | null;
 }
 
 export interface LedgerEntry {
@@ -69,6 +74,8 @@ export interface LedgerEntry {
   net_profit_portion: number;
   category?: string;
   note?: string;
+  /** ms epoch; stamped on new entries, absent on old ones. */
+  created_at?: number;
 }
 
 export interface DailyStatement {

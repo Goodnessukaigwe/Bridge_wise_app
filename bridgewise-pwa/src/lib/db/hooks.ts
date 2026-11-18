@@ -44,3 +44,13 @@ export function useSyncQueueCount() {
     [],
   );
 }
+
+export function useDailyLedger(dateKey: string) {
+  return useLiveQuery(
+    async () => {
+      if (!canUseIdb) return [];
+      return db.ledger_entries.where("date_key").equals(dateKey).toArray();
+    },
+    [dateKey],
+  );
+}

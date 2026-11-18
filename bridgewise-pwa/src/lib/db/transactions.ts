@@ -229,6 +229,9 @@ export type CreateSkuInput = {
   unit_selling_price: number;
   low_stock_threshold: number;
   initial_qty: number;
+  product_type?: "reseller" | "maker";
+  batch_cost?: number | null;
+  batch_qty?: number | null;
 };
 
 export type UpdateSkuInput = {
@@ -237,6 +240,9 @@ export type UpdateSkuInput = {
   unit_cost_price: number;
   unit_selling_price: number;
   low_stock_threshold: number;
+  product_type?: "reseller" | "maker";
+  batch_cost?: number | null;
+  batch_qty?: number | null;
 };
 
 function assertMoney(value: number, label: string): void {
@@ -297,6 +303,9 @@ export async function createSku(input: CreateSkuInput): Promise<Sku> {
       stock_qty: input.initial_qty,
       low_stock_threshold: input.low_stock_threshold,
     }),
+    ...(input.product_type ? { product_type: input.product_type } : {}),
+    ...(input.batch_cost != null ? { batch_cost: input.batch_cost } : {}),
+    ...(input.batch_qty != null ? { batch_qty: input.batch_qty } : {}),
   };
   await db.inventory.add(sku);
   return sku;
@@ -329,6 +338,9 @@ export async function updateSku(input: UpdateSkuInput): Promise<Sku> {
       low_stock_threshold: input.low_stock_threshold,
       last_restock_qty: existing.last_restock_qty,
     }),
+    ...(input.product_type ? { product_type: input.product_type } : { product_type: undefined }),
+    batch_cost: input.batch_cost ?? null,
+    batch_qty: input.batch_qty ?? null,
   };
   await db.inventory.put(next);
   return next;
@@ -448,6 +460,8 @@ export type CommitRestockInput = {
   qty: number;
   total_cost: number;
   date_key?: string;
+  batch_cost?: number;
+  batch_qty?: number;
 };
 
 /**
@@ -485,6 +499,8 @@ export async function commitRestock(
           last_restock_qty: input.qty,
         }),
         ...(lastCostValid ? { unit_cost_price: unitCost } : {}),
+        ...(input.batch_cost != null ? { batch_cost: input.batch_cost } : {}),
+        ...(input.batch_qty != null ? { batch_qty: input.batch_qty } : {}),
       });
 
       const txnSeq = await nextLedgerSeq(dateKey, "RESTOCK");
@@ -767,6 +783,7 @@ export async function commitConfirmedOrder(
           gross_amount: gross,
           capital_portion: capital,
           net_profit_portion: gross - capital,
+          created_at: Date.now(),
         });
 
         await db.orders.update(order.order_id, {
