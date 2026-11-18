@@ -32,7 +32,7 @@ export function TopBar() {
         src="/onrecord_icon_v3.svg"
         alt=""
         aria-hidden="true"
-        className="size-7 shrink-0"
+        className="size-9 shrink-0"
       />
       <p className="text-base font-semibold tracking-tight text-neutral-900">
         OnRecord
