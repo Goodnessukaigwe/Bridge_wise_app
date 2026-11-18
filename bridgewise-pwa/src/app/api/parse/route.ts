@@ -97,13 +97,17 @@ export async function POST(request: Request) {
   }
 }
 
+const PARSE_TIMEOUT_MS = 25_000;
+
 async function generateParseJson(
   ai: GoogleGenAI,
   model: string,
   prompt: string,
 ) {
-  const run = () =>
-    ai.models.generateContent({
+  const run = () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PARSE_TIMEOUT_MS);
+    return ai.models.generateContent({
       model,
       contents: prompt,
       config: {
@@ -111,8 +115,10 @@ async function generateParseJson(
         responseMimeType: "application/json",
         responseSchema: PARSE_RESPONSE_SCHEMA,
         thinkingConfig: { thinkingBudget: 0 },
+        abortSignal: controller.signal,
       },
-    });
+    }).finally(() => clearTimeout(timer));
+  };
 
   try {
     return await run();

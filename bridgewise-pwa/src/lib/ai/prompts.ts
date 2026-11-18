@@ -131,6 +131,5 @@ export const PARSE_RESPONSE_SCHEMA: Schema = {
   ],
 };
 
-/** thinking disabled via thinkingBudget:0 so 2.0-flash is faster and cheaper than 2.5-flash here. */
-export const PARSE_MODEL = "gemini-2.0-flash";
-export const PARSE_MODEL_FALLBACK = "gemini-1.5-flash";
+export const PARSE_MODEL = "gemini-3.8-flash";
+export const PARSE_MODEL_FALLBACK = "gemini-3.5-flash";
