@@ -39,7 +39,7 @@ export default function Home() {
         type="button"
         onClick={() => setCaptureOpen(true)}
         aria-label="Quick Capture"
-        className="absolute bottom-[76px] right-5 z-30 flex size-14 items-center justify-center rounded-full bg-[#F59E0B] text-white shadow-[0_4px_14px_rgba(245,158,11,0.4)] active:scale-95"
+        className="fixed bottom-[76px] right-5 z-30 flex size-14 items-center justify-center rounded-full bg-[#F59E0B] text-white shadow-[0_4px_14px_rgba(245,158,11,0.4)] active:scale-95"
       >
         <Plus className="size-6" strokeWidth={2.5} aria-hidden />
       </button>
