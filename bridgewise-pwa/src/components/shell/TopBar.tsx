@@ -7,7 +7,6 @@ import { flushParseQueue } from "@/lib/sync/syncQueue";
 export function TopBar() {
   const [online, setOnline] = useState(true);
   const queueLength = useSyncQueueCount();
-  const synced = online && queueLength === 0;
 
   useEffect(() => {
     const sync = () => setOnline(navigator.onLine);
@@ -25,8 +24,10 @@ export function TopBar() {
     };
   }, []);
 
+  const queued = online && (queueLength ?? 0) > 0;
+
   return (
-    <header className="flex shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-4 py-2">
+    <header className="flex h-14 shrink-0 items-center gap-2 bg-[#17104A] px-4">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/onrecord_icon_v3.svg"
@@ -34,15 +35,19 @@ export function TopBar() {
         aria-hidden="true"
         className="size-9 shrink-0"
       />
-      <p className="text-base font-semibold tracking-tight text-neutral-900">
+      <p className="text-[17px] font-semibold tracking-tight text-white">
         OnRecord
       </p>
       <span
-        className={`text-[11px] font-semibold uppercase tracking-wide ${
-          synced ? "text-emerald-800" : "text-amber-800"
+        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-white ${
+          !online
+            ? "bg-neutral-500/40"
+            : queued
+              ? "bg-amber-500/40"
+              : "bg-emerald-500/40"
         }`}
       >
-        {synced ? "SYNCED" : "OFFLINE SAVED"}
+        {!online ? "OFFLINE" : queued ? "QUEUED" : "SYNCED"}
       </span>
     </header>
   );

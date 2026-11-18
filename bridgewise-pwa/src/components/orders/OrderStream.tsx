@@ -37,7 +37,7 @@ const CAKE_SKU = "Red_Velvet_Cake_8in";
 const isDev = process.env.NODE_ENV !== "production";
 
 const fieldClass =
-  "min-h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-900";
+  "min-h-11 w-full rounded-[10px] border border-[#E8E6F0] bg-white px-3 text-sm text-[#0F0A2E] outline-none focus:border-[#17104A]";
 
 function formatNaira(amount: number) {
   return `₦${amount.toLocaleString("en-NG")}`;
@@ -303,8 +303,8 @@ function NewInquirySheet({
           className="relative max-h-[85%] w-full overflow-y-auto rounded-t-2xl border-t border-neutral-200 bg-white px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4 shadow-lg"
         >
           <div className="mb-3 flex items-center justify-between">
-            <h2 id={titleId} className="text-base font-semibold text-neutral-900">
-              Log inquiry
+            <h2 id={titleId} className="text-base font-semibold text-[#0F0A2E]">
+              New Order
             </h2>
             <button
               ref={closeRef}
@@ -908,29 +908,26 @@ export function OrderStream() {
 
   return (
     <section className="flex min-h-full flex-col px-4 py-6">
-      <h1 className="text-center text-lg font-semibold text-neutral-900">
+      <h1 className="text-center text-[22px] font-bold text-[#0F0A2E]">
         Order Stream
       </h1>
-      <p className="mt-2 text-center text-sm text-neutral-600">
-        Pending cards never move stock. Confirm Sale is the only path into the
-        ledger.
-      </p>
       <button
         type="button"
         onClick={() => setSheetOpen(true)}
-        className="mt-4 inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-neutral-900 px-3 text-sm font-semibold text-white"
+        className="mt-4 flex h-[54px] w-full items-center justify-center gap-1.5 rounded-[10px] bg-[#17104A] text-[15px] font-semibold text-white"
       >
         <Plus className="size-4" strokeWidth={2.5} aria-hidden />
-        Log inquiry
+        New Order
       </button>
 
       {visible.length === 0 ? (
-        <div className="mt-8 flex flex-col items-center text-center">
-          <p className="max-w-xs text-sm font-medium leading-relaxed text-neutral-800">
-            Paste a WhatsApp chat to start
+        <div className="mt-10 flex flex-col items-center text-center">
+          <p className="max-w-xs text-[18px] font-semibold leading-snug text-[#0F0A2E]">
+            No orders yet
           </p>
-          <p className="mt-2 max-w-xs text-sm leading-relaxed text-neutral-600">
-            Tap the + button to capture. Log inquiry if you already know the SKU.
+          <p className="mt-2 max-w-xs text-sm leading-relaxed text-[#6B6898]">
+            Share a WhatsApp chat into OnRecord, or tap the amber button below
+            to paste one.
           </p>
         </div>
       ) : (
@@ -997,12 +994,18 @@ export function OrderStream() {
                     onClick={() => setSelectedOrderId(order.order_id)}
                     className={`cursor-pointer transition-colors ${
                       isPending
-                        ? "bg-amber-50 hover:bg-amber-100"
-                        : "bg-emerald-50 hover:bg-emerald-100"
+                        ? "bg-white hover:bg-amber-50"
+                        : "bg-[#F0FDF8] hover:bg-emerald-50"
                     }`}
                   >
-                    <td className="max-w-0 overflow-hidden px-3 py-3">
-                      <p className="truncate font-semibold text-neutral-900">
+                    <td
+                      className={`max-w-0 overflow-hidden border-l-4 px-3 py-3 ${
+                        isPending
+                          ? "border-l-[#F59E0B]"
+                          : "border-l-[#10B981]"
+                      }`}
+                    >
+                      <p className="truncate font-semibold text-[#0F0A2E]">
                         {order.customer_name}
                       </p>
                     </td>

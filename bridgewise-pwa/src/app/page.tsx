@@ -29,15 +29,17 @@ export default function Home() {
     <div className="relative flex min-h-0 flex-1 flex-col">
       <TopBar />
       <main className="min-h-0 flex-1 overflow-y-auto">
-        {tab === "order" && <OrderStream />}
-        {tab === "stock" && <StockRoom />}
-        {tab === "statement" && <PocketStatement />}
+        <div key={tab} style={{ animation: "tabFadeIn 150ms ease" }}>
+          {tab === "order" && <OrderStream />}
+          {tab === "stock" && <StockRoom />}
+          {tab === "statement" && <PocketStatement />}
+        </div>
       </main>
       <button
         type="button"
         onClick={() => setCaptureOpen(true)}
         aria-label="Quick Capture"
-        className="absolute bottom-20 right-4 z-30 flex size-14 items-center justify-center rounded-full bg-neutral-900 text-white shadow-lg active:scale-95"
+        className="absolute bottom-[76px] right-5 z-30 flex size-14 items-center justify-center rounded-full bg-[#F59E0B] text-white shadow-[0_4px_14px_rgba(245,158,11,0.4)] active:scale-95"
       >
         <Plus className="size-6" strokeWidth={2.5} aria-hidden />
       </button>

@@ -26,22 +26,19 @@ import {
 } from "@/lib/db/transactions";
 import type { Sku, StockColor } from "@/types/bridgewise";
 
-const HEALTH: { color: StockColor; label: string; swatch: string }[] = [
-  { color: "GREEN", label: "Safe", swatch: "bg-emerald-600" },
-  { color: "YELLOW", label: "Low", swatch: "bg-amber-500" },
-  { color: "RED", label: "Out of stock", swatch: "bg-red-600" },
-];
-
 const BADGE: Record<StockColor, { label: string; className: string }> = {
   GREEN: {
-    label: "GREEN • SAFE",
-    className: "bg-emerald-200 text-emerald-950",
+    label: "In stock",
+    className: "bg-[#DCFCE7] text-[#166534]",
   },
   YELLOW: {
-    label: "YELLOW • LOW",
-    className: "bg-amber-200 text-amber-950",
+    label: "Running low",
+    className: "bg-[#FEF3C7] text-[#92400E]",
   },
-  RED: { label: "RED • CRITICAL", className: "bg-red-200 text-red-950" },
+  RED: {
+    label: "Out of stock",
+    className: "bg-[#FEE2E2] text-[#991B1B]",
+  },
 };
 
 const COLOR_RANK: Record<StockColor, number> = {
@@ -128,7 +125,7 @@ function SkuCard({
       <button
         type="button"
         onClick={() => onEdit(sku)}
-        className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-4 text-left"
+        className="w-full rounded-[14px] border border-[#E8E6F0] bg-white px-4 py-4 text-left shadow-[0_1px_4px_rgba(15,10,46,0.08)]"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -247,7 +244,7 @@ function SkuFormSheet({
   }
 
   const fieldClass =
-    "min-h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-900";
+    "min-h-11 w-full rounded-[10px] border border-[#E8E6F0] bg-white px-3 text-sm text-[#0F0A2E] outline-none focus:border-[#17104A]";
 
   return (
     <div className="fixed inset-0 z-50 flex justify-center">
@@ -265,8 +262,8 @@ function SkuFormSheet({
           className="relative max-h-[85%] w-full overflow-y-auto rounded-t-2xl border-t border-neutral-200 bg-white px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4 shadow-lg"
         >
           <div className="mb-3 flex items-center justify-between">
-            <h2 id={titleId} className="text-base font-semibold text-neutral-900">
-              {creating ? "Add SKU" : "Edit SKU"}
+            <h2 id={titleId} className="text-base font-semibold text-[#0F0A2E]">
+              {creating ? "Add Product" : "Edit Product"}
             </h2>
             <button
               ref={closeRef}
@@ -361,9 +358,9 @@ function SkuFormSheet({
           <button
             type="submit"
             disabled={busy}
-            className="mt-1 min-h-11 rounded-lg bg-neutral-900 px-3 text-sm font-semibold text-white disabled:opacity-50"
+            className="mt-1 h-[54px] w-full rounded-[10px] bg-[#17104A] text-[15px] font-semibold text-white disabled:opacity-50"
           >
-            {busy ? "Saving…" : creating ? "Save SKU" : "Save changes"}
+            {busy ? "Saving…" : creating ? "Save Product" : "Save changes"}
           </button>
           </form>
         </div>
@@ -402,47 +399,36 @@ export function StockRoom() {
 
   return (
     <section className="flex min-h-full flex-col px-4 py-6">
-      <h1 className="text-center text-lg font-semibold text-neutral-900">
+      <h1 className="text-center text-[22px] font-bold text-[#0F0A2E]">
         Stock Room
       </h1>
-      <p className="mt-2 text-center text-sm text-neutral-600">
-        Live counts only. Confirm Sale, restock, and return change quantity.
-      </p>
       <div className="mt-4 flex flex-col gap-2">
         <button
           type="button"
           onClick={() => setSheet("new")}
-          className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-neutral-900 px-3 text-sm font-semibold text-white"
+          className="flex h-[54px] w-full items-center justify-center gap-1.5 rounded-[10px] bg-[#17104A] text-[15px] font-semibold text-white"
         >
           <Plus className="size-4" strokeWidth={2.5} aria-hidden />
-          Add SKU
+          Add Product
         </button>
         <button
           type="button"
           onClick={() => setRestockOpen(true)}
           disabled={sorted.length === 0}
-          className="min-h-11 rounded-lg border border-dashed border-neutral-300 bg-white px-3 text-sm font-medium text-neutral-700 disabled:opacity-50"
+          className="h-[54px] w-full rounded-[10px] border-[1.5px] border-[#17104A] bg-white text-[15px] font-semibold text-[#17104A] disabled:opacity-50"
         >
-          Log supplier restock
+          Restock Items
         </button>
       </div>
 
       {sorted.length === 0 ? (
-        <div className="mt-8 flex flex-col items-center text-center">
-          <p className="max-w-xs text-sm font-medium leading-relaxed text-neutral-800">
-            Add your first SKU
+        <div className="mt-10 flex flex-col items-center text-center">
+          <p className="text-[18px] font-semibold text-[#0F0A2E]">
+            No products yet
           </p>
-          <ul className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            {HEALTH.map(({ color, label, swatch }) => (
-              <li
-                key={color}
-                className="flex items-center gap-1.5 text-xs font-medium text-neutral-700"
-              >
-                <span className={`size-2.5 rounded-full ${swatch}`} aria-hidden />
-                {label}
-              </li>
-            ))}
-          </ul>
+          <p className="mt-2 max-w-xs text-sm leading-relaxed text-[#6B6898]">
+            Add a product to start tracking stock.
+          </p>
         </div>
       ) : (
         <ul className="mt-6 space-y-3">
