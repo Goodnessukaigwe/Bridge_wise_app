@@ -1,6 +1,6 @@
 {
-  "name": "BridgeWise",
-  "short_name": "BridgeWise",
+  "name": "OnRecord",
+  "short_name": "OnRecord",
   "description": "Offline-first back-office beside WhatsApp for Nigerian social-commerce vendors.",
   "start_url": "/",
   "scope": "/",
@@ -8,6 +8,11 @@
   "background_color": "#fafafa",
   "theme_color": "#171717",
   "icons": [
+    {
+      "src": "/onrecord_icon_v3.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",

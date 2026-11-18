@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
+import { Check, Plus, RotateCcw, Share2, X } from "lucide-react";
 import {
   useEffect,
   useId,
@@ -143,6 +143,12 @@ function confirmCtaLabel(order: Order): string {
   return hasPaymentSignal(order)
     ? "Confirm & Deduct Stock"
     : "Tap to Confirm Sale";
+}
+
+function formatDateKey(dateKey: string): string {
+  const parts = dateKey.split("-").map(Number);
+  const d = new Date(parts[0] ?? 2000, (parts[1] ?? 1) - 1, parts[2] ?? 1);
+  return d.toLocaleDateString("en-NG", { month: "short", day: "numeric" });
 }
 
 function recentCustomers(customers: Customer[], orders: Order[]): Customer[] {
@@ -393,8 +399,9 @@ function NewInquirySheet({
   );
 }
 
-function OrderCard({
+function OrderDetailSheet({
   order,
+  allOrders,
   skus,
   customers,
   recent,
@@ -404,8 +411,10 @@ function OrderCard({
   onCancel,
   onReturn,
   onAttachCustomer,
+  onClose,
 }: {
   order: Order;
+  allOrders: Order[];
   skus: Sku[];
   customers: Customer[];
   recent: Customer[];
@@ -415,7 +424,15 @@ function OrderCard({
   onCancel: () => void;
   onReturn: () => void;
   onAttachCustomer: (customerId: string) => void;
+  onClose: () => void;
 }) {
+  const titleId = useId();
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const [activeTab, setActiveTab] = useState<"details" | "history">("details");
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [shareFailed, setShareFailed] = useState(false);
+  const [sharing, setSharing] = useState(false);
+
   const pending = order.status === "PENDING_INQUIRY" && !order.ledger_committed;
   const confirmed = order.status === "CONFIRMED_SALE" && order.ledger_committed;
   const unparsed = pending && order.items.length === 0;
@@ -424,15 +441,35 @@ function OrderCard({
   const linked = walkIn
     ? undefined
     : customers.find(
-        (customer) => customer.customer_id === customerId(order.customer_name),
+        (c) => c.customer_id === customerId(order.customer_name),
       );
-  const [shareStatus, setShareStatus] = useState<string | null>(null);
-  const [shareFailed, setShareFailed] = useState(false);
-  const [sharing, setSharing] = useState(false);
   const gross = orderGross(order.items);
   const snippet =
     order.delivery_address.trim() || linked?.saved_addresses[0] || "";
   const rawSnippet = order.raw_text?.trim() ?? "";
+
+  const history = useMemo(() => {
+    if (walkIn) return [];
+    const cid = customerId(order.customer_name);
+    return newestFirst(
+      allOrders.filter(
+        (o) =>
+          o.status === "CONFIRMED_SALE" &&
+          o.ledger_committed &&
+          o.order_id !== order.order_id &&
+          customerId(o.customer_name) === cid,
+      ),
+    );
+  }, [allOrders, order, walkIn]);
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   async function onShare() {
     if (sharing) return;
@@ -441,13 +478,10 @@ function OrderCard({
     setShareFailed(false);
     try {
       const result = await shareReceipt(order);
-      if (result.status === "shared") {
-        setShareStatus("Shared");
-      } else if (result.status === "copied") {
-        setShareStatus("Copied");
-      } else if (result.status === "cancelled") {
-        setShareStatus("Share cancelled");
-      } else {
+      if (result.status === "shared") setShareStatus("Shared");
+      else if (result.status === "copied") setShareStatus("Copied");
+      else if (result.status === "cancelled") setShareStatus("Share cancelled");
+      else {
         setShareFailed(true);
         setShareStatus(result.message);
       }
@@ -457,149 +491,240 @@ function OrderCard({
   }
 
   return (
-    <li
-      className={`rounded-xl border px-4 py-4 text-left ${
-        pending
-          ? "border-amber-300 bg-amber-50"
-          : "border-emerald-300 bg-emerald-50"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-semibold text-neutral-900">{order.customer_name}</p>
-          <p className="mt-0.5 truncate font-mono text-[11px] text-neutral-500">
-            {order.order_id}
-          </p>
-          {walkIn ? null : (
-            <p className="truncate font-mono text-[11px] text-neutral-500">
-              {linked?.customer_id ?? customerId(order.customer_name)}
-            </p>
+    <div className="fixed inset-0 z-50 flex justify-center">
+      <div className="relative flex h-full w-full max-w-md items-end bg-neutral-900/40">
+        <button
+          type="button"
+          className="absolute inset-0"
+          aria-label="Close order detail"
+          onClick={onClose}
+        />
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          className="relative max-h-[85%] w-full overflow-y-auto rounded-t-2xl border-t border-neutral-200 bg-white px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4 shadow-lg"
+        >
+          {/* Sheet header */}
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2
+                id={titleId}
+                className="truncate text-base font-semibold text-neutral-900"
+              >
+                {order.customer_name}
+              </h2>
+              <p className="font-mono text-[11px] text-neutral-500">
+                {order.order_id}
+              </p>
+            </div>
+            <button
+              ref={closeRef}
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-neutral-700"
+            >
+              <X className="size-5" aria-hidden />
+            </button>
+          </div>
+
+          {/* Tab switcher */}
+          <div className="mb-4 flex rounded-lg border border-neutral-200 bg-neutral-100 p-0.5">
+            <button
+              type="button"
+              onClick={() => setActiveTab("details")}
+              className={`flex-1 rounded-md py-1.5 text-sm font-semibold transition-colors ${
+                activeTab === "details"
+                  ? "bg-white text-neutral-900 shadow-sm"
+                  : "text-neutral-500"
+              }`}
+            >
+              Details
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("history")}
+              className={`flex-1 rounded-md py-1.5 text-sm font-semibold transition-colors ${
+                activeTab === "history"
+                  ? "bg-white text-neutral-900 shadow-sm"
+                  : "text-neutral-500"
+              }`}
+            >
+              History{history.length > 0 ? ` (${history.length})` : ""}
+            </button>
+          </div>
+
+          {/* Details tab */}
+          {activeTab === "details" && (
+            <div>
+              <span
+                className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                  pending
+                    ? "bg-amber-200 text-amber-950"
+                    : "bg-emerald-200 text-emerald-950"
+                }`}
+              >
+                {pending ? "PENDING INQUIRY" : "CONFIRMED SALE"}
+              </span>
+
+              {unparsed ? (
+                <>
+                  {rawSnippet ? (
+                    <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm text-neutral-800">
+                      {rawSnippet}
+                    </p>
+                  ) : null}
+                  <p className="mt-2 text-sm font-medium text-amber-950">
+                    Unparsed chat — Confirm disabled until a product is matched.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-3 text-sm font-medium text-neutral-900">
+                    {formatLines(order.items)}
+                  </p>
+                  <p className="mt-0.5 text-sm tabular-nums text-neutral-700">
+                    {formatNaira(gross)}
+                  </p>
+                  {rawSnippet ? (
+                    <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm text-neutral-700">
+                      {rawSnippet}
+                    </p>
+                  ) : snippet ? (
+                    <p className="mt-2 line-clamp-2 text-sm text-neutral-700">
+                      {snippet}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-sm text-neutral-500">
+                      No delivery address
+                    </p>
+                  )}
+                </>
+              )}
+
+              <p className="mt-2 text-xs font-medium text-neutral-600">
+                Intent: {intentLabel(order)} · {captureLabel(order.capture_method)}
+              </p>
+
+              {pending && walkIn ? (
+                <WalkInCustomerPicker
+                  customers={recent}
+                  disabled={busy}
+                  onPick={onAttachCustomer}
+                />
+              ) : null}
+
+              {pending ? (
+                <p className="mt-3 text-sm font-medium text-amber-950">
+                  0 stock deducted. Pocket unchanged until Confirm Sale.
+                </p>
+              ) : (
+                <p className="mt-3 text-sm font-medium text-emerald-950">
+                  Stock Deducted • Profit Logged
+                </p>
+              )}
+
+              {needsRestock ? (
+                <p className="mt-2 text-sm font-medium text-red-800" role="status">
+                  out of stock — restock first
+                </p>
+              ) : null}
+
+              {error ? (
+                <p className="mt-2 text-sm text-red-700" role="alert">
+                  {error}
+                </p>
+              ) : null}
+
+              <div className="mt-3 flex flex-col gap-2">
+                {pending ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={
+                        busy || order.ledger_committed || unparsed || needsRestock
+                      }
+                      onClick={onConfirm}
+                      className="min-h-11 rounded-lg bg-neutral-900 px-3 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {confirmCtaLabel(order)}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={onCancel}
+                      className="min-h-11 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-medium text-neutral-800 disabled:opacity-50"
+                    >
+                      Cancel / Archive
+                    </button>
+                  </>
+                ) : null}
+                {confirmed ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy || sharing}
+                      onClick={onShare}
+                      className="min-h-11 rounded-lg bg-neutral-900 px-3 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {sharing ? "Sharing…" : "Share Receipt"}
+                    </button>
+                    {shareStatus ? (
+                      <p
+                        className={`text-sm ${shareFailed ? "text-red-700" : "text-emerald-950"}`}
+                        role="status"
+                      >
+                        {shareStatus}
+                      </p>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={onReturn}
+                      className="min-h-11 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-medium text-neutral-800 disabled:opacity-50"
+                    >
+                      Log return
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          )}
+
+          {/* History tab */}
+          {activeTab === "history" && (
+            <div>
+              {history.length === 0 ? (
+                <div className="py-10 text-center">
+                  <p className="text-sm text-neutral-500">No previous orders</p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-neutral-100">
+                  {history.map((h) => (
+                    <li key={h.order_id} className="py-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-neutral-500">
+                            {formatDateKey(h.date_key)}
+                          </p>
+                          <p className="mt-0.5 truncate text-sm font-medium text-neutral-900">
+                            {formatLines(h.items)}
+                          </p>
+                        </div>
+                        <p className="shrink-0 text-sm font-semibold tabular-nums text-emerald-800">
+                          {formatNaira(orderGross(h.items))}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
         </div>
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-            pending
-              ? "bg-amber-200 text-amber-950"
-              : "bg-emerald-200 text-emerald-950"
-          }`}
-        >
-          {pending ? "PENDING INQUIRY" : "CONFIRMED SALE"}
-        </span>
       </div>
-
-      {unparsed ? (
-        <>
-          {rawSnippet ? (
-            <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm text-neutral-800">
-              {rawSnippet}
-            </p>
-          ) : null}
-          <p className="mt-2 text-sm font-medium text-amber-950">
-            Unparsed chat — Confirm disabled until a product is matched.
-          </p>
-        </>
-      ) : (
-        <>
-          <p className="mt-3 text-sm font-medium text-neutral-900">
-            {formatLines(order.items)}
-          </p>
-          <p className="mt-0.5 text-sm tabular-nums text-neutral-700">
-            {formatNaira(gross)}
-          </p>
-          {rawSnippet ? (
-            <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm text-neutral-700">
-              {rawSnippet}
-            </p>
-          ) : snippet ? (
-            <p className="mt-2 line-clamp-2 text-sm text-neutral-700">{snippet}</p>
-          ) : (
-            <p className="mt-2 text-sm text-neutral-500">No delivery address</p>
-          )}
-        </>
-      )}
-      <p className="mt-2 text-xs font-medium text-neutral-600">
-        Intent: {intentLabel(order)} · {captureLabel(order.capture_method)}
-      </p>
-      {pending && walkIn ? (
-        <WalkInCustomerPicker
-          customers={recent}
-          disabled={busy}
-          onPick={onAttachCustomer}
-        />
-      ) : null}
-
-      {pending ? (
-        <p className="mt-3 text-sm font-medium text-amber-950">
-          0 stock deducted. Pocket unchanged until Confirm Sale.
-        </p>
-      ) : (
-        <p className="mt-3 text-sm font-medium text-emerald-950">
-          Stock Deducted • Profit Logged
-        </p>
-      )}
-      {needsRestock ? (
-        <p className="mt-2 text-sm font-medium text-red-800" role="status">
-          out of stock — restock first
-        </p>
-      ) : null}
-
-      {error ? (
-        <p className="mt-2 text-sm text-red-700" role="alert">
-          {error}
-        </p>
-      ) : null}
-
-      <div className="mt-3 flex flex-col gap-2">
-        {pending ? (
-          <>
-            <button
-              type="button"
-              disabled={busy || order.ledger_committed || unparsed || needsRestock}
-              onClick={onConfirm}
-              className="min-h-11 rounded-lg bg-neutral-900 px-3 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {confirmCtaLabel(order)}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={onCancel}
-              className="min-h-11 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-medium text-neutral-800 disabled:opacity-50"
-            >
-              Cancel / Archive
-            </button>
-          </>
-        ) : null}
-        {confirmed ? (
-          <>
-            <button
-              type="button"
-              disabled={busy || sharing}
-              onClick={onShare}
-              className="min-h-11 rounded-lg bg-neutral-900 px-3 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {sharing ? "Sharing…" : "Share Receipt"}
-            </button>
-            {shareStatus ? (
-              <p
-                className={`text-sm ${shareFailed ? "text-red-700" : "text-emerald-950"}`}
-                role="status"
-              >
-                {shareStatus}
-              </p>
-            ) : null}
-            <button
-              type="button"
-              disabled={busy}
-              onClick={onReturn}
-              className="min-h-11 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-medium text-neutral-800 disabled:opacity-50"
-            >
-              Log return
-            </button>
-          </>
-        ) : null}
-      </div>
-    </li>
+    </div>
   );
 }
 
@@ -693,32 +818,21 @@ export function OrderStream() {
   const skus = useSkus();
   const customers = useCustomers();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const pending = useMemo(
-    () =>
-      newestFirst(
-        (orders ?? []).filter(
-          (order) =>
-            isInboxVisible(order) &&
-            order.status === "PENDING_INQUIRY" &&
-            !order.ledger_committed,
-        ),
-      ),
+  const visible = useMemo(
+    () => newestFirst((orders ?? []).filter(isInboxVisible)),
     [orders],
   );
-  const confirmed = useMemo(
+
+  const selectedOrder = useMemo(
     () =>
-      newestFirst(
-        (orders ?? []).filter(
-          (order) =>
-            isInboxVisible(order) &&
-            order.status === "CONFIRMED_SALE" &&
-            order.ledger_committed,
-        ),
-      ),
-    [orders],
+      selectedOrderId
+        ? (orders ?? []).find((o) => o.order_id === selectedOrderId)
+        : undefined,
+    [selectedOrderId, orders],
   );
 
   async function run(orderId: string | null, action: () => Promise<void>) {
@@ -787,7 +901,6 @@ export function OrderStream() {
     );
   }
 
-  const empty = pending.length === 0 && confirmed.length === 0;
   const catalog = [...skus].sort((a, b) =>
     a.display_name.localeCompare(b.display_name),
   );
@@ -811,82 +924,198 @@ export function OrderStream() {
         Log inquiry
       </button>
 
-      {empty ? (
+      {visible.length === 0 ? (
         <div className="mt-8 flex flex-col items-center text-center">
           <p className="max-w-xs text-sm font-medium leading-relaxed text-neutral-800">
             Paste a WhatsApp chat to start
           </p>
           <p className="mt-2 max-w-xs text-sm leading-relaxed text-neutral-600">
-            Tap + at the top to capture. Log inquiry stays here if you already
-            know the SKU.
+            Tap the + button to capture. Log inquiry if you already know the SKU.
           </p>
         </div>
       ) : (
-        <div className="mt-6 flex flex-col gap-6">
-          {pending.length > 0 ? (
-            <section>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-amber-800">
-                Pending inquiries
-              </h2>
-              <ul className="space-y-3">
-                {pending.map((order) => (
-                  <OrderCard
+        <div className="mt-6 overflow-x-auto rounded-xl border border-neutral-200 bg-white">
+          <table className="w-full table-fixed border-collapse text-sm">
+            <colgroup>
+              <col className="w-[22%]" />
+              <col className="w-[26%]" />
+              <col className="w-[16%]" />
+              <col className="w-[16%]" />
+              <col className="w-[20%]" />
+            </colgroup>
+            <thead>
+              <tr className="border-b border-neutral-200">
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-neutral-500"
+                >
+                  Customer
+                </th>
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-neutral-500"
+                >
+                  Items
+                </th>
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-neutral-500"
+                >
+                  ₦
+                </th>
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-neutral-500"
+                >
+                  Status
+                </th>
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-neutral-500"
+                >
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {visible.map((order) => {
+                const isPending =
+                  order.status === "PENDING_INQUIRY" && !order.ledger_committed;
+                const isConfirmed =
+                  order.status === "CONFIRMED_SALE" && order.ledger_committed;
+                const unparsed = isPending && order.items.length === 0;
+                const needsRestock =
+                  isPending && !unparsed && orderNeedsRestock(order, skus);
+                const gross = orderGross(order.items);
+                const itemSummary = unparsed
+                  ? "(unparsed)"
+                  : formatLines(order.items);
+
+                return (
+                  <tr
                     key={order.order_id}
-                    order={order}
-                    skus={skus}
-                    customers={customers}
-                    recent={directory}
-                    busy={busy}
-                    error={errors[order.order_id] ?? null}
-                    onConfirm={() => onConfirm(order.order_id)}
-                    onCancel={() => onCancel(order.order_id)}
-                    onReturn={() => onReturn(order.order_id)}
-                    onAttachCustomer={(id) =>
-                      onAttachCustomer(order.order_id, id)
-                    }
-                  />
-                ))}
-              </ul>
-            </section>
-          ) : null}
-          {confirmed.length > 0 ? (
-            <section>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-emerald-800">
-                Confirmed sales
-              </h2>
-              <ul className="space-y-3">
-                {confirmed.map((order) => (
-                  <OrderCard
-                    key={order.order_id}
-                    order={order}
-                    skus={skus}
-                    customers={customers}
-                    recent={directory}
-                    busy={busy}
-                    error={errors[order.order_id] ?? null}
-                    onConfirm={() => onConfirm(order.order_id)}
-                    onCancel={() => onCancel(order.order_id)}
-                    onReturn={() => onReturn(order.order_id)}
-                    onAttachCustomer={(id) =>
-                      onAttachCustomer(order.order_id, id)
-                    }
-                  />
-                ))}
-              </ul>
-            </section>
-          ) : null}
+                    onClick={() => setSelectedOrderId(order.order_id)}
+                    className={`cursor-pointer transition-colors ${
+                      isPending
+                        ? "bg-amber-50 hover:bg-amber-100"
+                        : "bg-emerald-50 hover:bg-emerald-100"
+                    }`}
+                  >
+                    <td className="max-w-0 overflow-hidden px-3 py-3">
+                      <p className="truncate font-semibold text-neutral-900">
+                        {order.customer_name}
+                      </p>
+                    </td>
+                    <td className="max-w-0 overflow-hidden px-3 py-3">
+                      <p className="truncate text-neutral-700">{itemSummary}</p>
+                    </td>
+                    <td className="px-3 py-3 text-right tabular-nums text-neutral-700">
+                      {gross > 0 ? formatNaira(gross) : "—"}
+                    </td>
+                    <td className="px-3 py-3">
+                      <span
+                        className={`text-xs font-semibold ${
+                          isPending ? "text-amber-800" : "text-emerald-800"
+                        }`}
+                      >
+                        {isPending ? "Pending" : "Received"}
+                      </span>
+                    </td>
+                    <td
+                      className="px-3 py-3"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        {isPending ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={
+                                busy ||
+                                order.ledger_committed ||
+                                unparsed ||
+                                needsRestock
+                              }
+                              onClick={() => onConfirm(order.order_id)}
+                              aria-label={`Confirm sale for ${order.customer_name}`}
+                              className="inline-flex size-9 items-center justify-center rounded-lg bg-neutral-900 text-white disabled:opacity-40"
+                            >
+                              <Check
+                                className="size-4"
+                                strokeWidth={2.5}
+                                aria-hidden
+                              />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => onCancel(order.order_id)}
+                              aria-label={`Cancel order for ${order.customer_name}`}
+                              className="inline-flex size-9 items-center justify-center rounded-lg border border-neutral-300 bg-white text-neutral-700 disabled:opacity-40"
+                            >
+                              <X className="size-4" aria-hidden />
+                            </button>
+                          </>
+                        ) : null}
+                        {isConfirmed ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => setSelectedOrderId(order.order_id)}
+                            aria-label={`Share receipt for ${order.customer_name}`}
+                            className="inline-flex size-9 items-center justify-center rounded-lg bg-neutral-900 text-white disabled:opacity-40"
+                          >
+                            <Share2 className="size-4" aria-hidden />
+                          </button>
+                        ) : null}
+                        {!isPending && !isConfirmed ? (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedOrderId(order.order_id)}
+                            aria-label={`View order for ${order.customer_name}`}
+                            className="inline-flex size-9 items-center justify-center rounded-lg border border-neutral-300 bg-white text-neutral-700"
+                          >
+                            <RotateCcw className="size-4" aria-hidden />
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
       {isDev ? (
-        <DevShortcuts
-          busy={busy}
-          onRun={(action) => run(null, action)}
-        />
+        <DevShortcuts busy={busy} onRun={(action) => run(null, action)} />
       ) : null}
 
       {sheetOpen ? (
         <NewInquirySheet skus={catalog} onClose={() => setSheetOpen(false)} />
+      ) : null}
+
+      {selectedOrder ? (
+        <OrderDetailSheet
+          order={selectedOrder}
+          allOrders={orders}
+          skus={skus}
+          customers={customers}
+          recent={directory}
+          busy={busy}
+          error={errors[selectedOrder.order_id] ?? null}
+          onConfirm={() => onConfirm(selectedOrder.order_id)}
+          onCancel={() => {
+            void onCancel(selectedOrder.order_id);
+            setSelectedOrderId(null);
+          }}
+          onReturn={() => onReturn(selectedOrder.order_id)}
+          onAttachCustomer={(id) =>
+            onAttachCustomer(selectedOrder.order_id, id)
+          }
+          onClose={() => setSelectedOrderId(null)}
+        />
       ) : null}
     </section>
   );

@@ -9,42 +9,21 @@ import { Type, type Schema } from "@google/genai";
  * `status: PENDING_INQUIRY` and `ledger_committed: false`.
  * Expense and restock never become sales.
  */
-export const PARSE_SYSTEM_INSTRUCTION = `You extract structured events from short notes and WhatsApp chats used by Nigerian social-commerce vendors.
+export const PARSE_SYSTEM_INSTRUCTION = `You extract structured events from WhatsApp chats and notes by Nigerian social-commerce vendors.
 
-Language: informal Nigerian English and Pidgin (abeg, I wan buy, how much, una get, transfer don go, I go pay now, send am, e don enter, 5k, 3k).
+Language: informal Nigerian English and Pidgin ("abeg", "I wan buy", "transfer don go", "5k").
+Naira: "5k"=5000, "3k"=3000, "1.5k"=1500, "₦5,000"=5000. Output numbers only, never the k shorthand.
 
-First set kind:
-- "expense": the VENDOR is logging a business cash-out that is NOT buying stock and NOT a customer order. Examples: "Fuel 5k", "nylon 3k", "Fuel 5k, nylon 3k", transport, fare, data, airtime, generator, packaging, "spent 5k on fuel".
-- "restock": stock arrived from a supplier. Examples: "Restocked 20 Ankara", "supplier brought 10 bags", "add 20 black shoes".
-- "order": a customer inquiry or purchase (WhatsApp chat about sending goods, price, payment).
+kind:
+- "expense": vendor cash-out not involving stock or a customer (fuel, transport, data, packaging, nylon).
+- "restock": stock in from a supplier ("Restocked 20 Ankara", "supplier brought 10 bags").
+- "order": a customer inquiry or purchase chat.
 
-Naira: "5k" = 5000, "3k" = 3000, "1.5k" = 1500, "₦5,000" = 5000. Always output naira numbers, never the k shorthand.
+expense → amount (single) or expenses[] (multiple costs, one row each); category; note; items=[]; customer_name=""; delivery_address="".
+restock → qty; sku_hint; items[0]={product_name: sku_hint, quantity: qty}; total_cost (0 if unknown); customer_name=""; delivery_address="".
+order → customer_name (WhatsApp header like "[11/12] Amaka:" or in-text self-ID; empty if unknown); delivery_address (location phrase; empty if none); items[] with product_name and quantity (default 1 when implied); payment_signal_detected=true for "transfer sent/don go", "I have paid", "I go pay", "POS", "send account"; intent_classification=HIGH_PURCHASE_INTENT when buying/paying, INQUIRY when asking price or availability; suggested_status=READY_TO_CONFIRM only when payment_signal_detected.
 
-When kind is "expense":
-- amount: naira for a single cost. 0 if using expenses[].
-- category: Fuel, Nylon, Transport, etc.
-- note: short original phrase.
-- expenses: one object per cost when several appear ("Fuel 5k, nylon 3k" → two rows).
-- items: empty array.
-- customer_name and delivery_address: empty.
-
-When kind is "restock":
-- qty: whole units added.
-- sku_hint / items[0].product_name: spoken product (e.g. "Ankara", "black shoes").
-- items[0].quantity equals qty when a product is named.
-- total_cost: naira paid to the supplier, or 0 if not mentioned.
-- customer_name and delivery_address: empty.
-
-When kind is "order" (customer chat):
-- customer_name: WhatsApp header name such as "[11/12, 10:15 AM] Amaka:" or in-text self-ID ("this is Tunde from Ikeja"). Empty string if unknown.
-- delivery_address: location phrases (Lekki Phase 1, Ikeja, "my house for Surulere"). Empty string if none.
-- items: each product with quantity. Default quantity to 1 when implied ("send the bag"). product_name is the spoken name (e.g. "black bags"). product_id is a SKU-like hint if obvious, otherwise empty.
-- payment_signal_detected: true for payment or commitment language — "transfer sent", "transfer don go", "I have paid", "I go pay", "POS", "cash on delivery", "send account".
-- intent_classification: HIGH_PURCHASE_INTENT when they are buying, sending, or paying. INQUIRY when asking price, availability, or window-shopping ("how much", "una get?", "just checking").
-- suggested_status: READY_TO_CONFIRM only when payment_signal_detected is true.
-
-This is extraction only. Never confirm a sale. Never deduct stock. Never mark a ledger committed.
-Never classify fuel, nylon, transport, or supplier restock as an order.`;
+Extraction only. Never confirm a sale, deduct stock, or mark a ledger committed.`;
 
 export const PARSE_RESPONSE_SCHEMA: Schema = {
   type: Type.OBJECT,
@@ -152,6 +131,6 @@ export const PARSE_RESPONSE_SCHEMA: Schema = {
   ],
 };
 
-/** Plan model. Newer Google AI Studio keys may only allow the fallback. */
-export const PARSE_MODEL = "gemini-2.5-flash";
-export const PARSE_MODEL_FALLBACK = "gemini-3.8-flash";
+/** thinking disabled via thinkingBudget:0 so 2.0-flash is faster and cheaper than 2.5-flash here. */
+export const PARSE_MODEL = "gemini-2.0-flash";
+export const PARSE_MODEL_FALLBACK = "gemini-1.5-flash";

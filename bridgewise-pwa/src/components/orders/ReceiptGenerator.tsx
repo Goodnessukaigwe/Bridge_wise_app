@@ -34,7 +34,7 @@ export function buildReceiptText(order: Order): string {
   const delivery = order.delivery_address.trim();
 
   const lines = [
-    "BridgeWise receipt",
+    "OnRecord receipt",
     "",
     order.customer_name,
     ...items,
@@ -59,7 +59,7 @@ export async function shareReceipt(order: Order): Promise<ShareReceiptResult> {
 
   if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
     try {
-      await navigator.share({ title: "BridgeWise receipt", text });
+      await navigator.share({ title: "OnRecord receipt", text });
       return { status: "shared" };
     } catch (err) {
       if (isAbortError(err)) {

@@ -14,12 +14,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "BridgeWise",
-  applicationName: "BridgeWise",
+  title: "OnRecord",
+  applicationName: "OnRecord",
   description: "Offline-first back-office beside WhatsApp for Nigerian social-commerce vendors.",
   manifest: "/manifest.json",
   icons: {
     icon: [
+      { url: "/onrecord_icon_v3.svg", type: "image/svg+xml" },
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
       { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "BridgeWise",
+    title: "OnRecord",
   },
 };
 

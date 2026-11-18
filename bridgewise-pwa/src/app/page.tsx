@@ -1,5 +1,6 @@
 "use client";
 
+import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { QuickCaptureModal } from "@/components/capture/QuickCaptureModal";
 import { PocketStatement } from "@/components/finance/PocketStatement";
@@ -25,13 +26,21 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <TopBar onCapture={() => setCaptureOpen(true)} />
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <TopBar />
       <main className="min-h-0 flex-1 overflow-y-auto">
         {tab === "order" && <OrderStream />}
         {tab === "stock" && <StockRoom />}
         {tab === "statement" && <PocketStatement />}
       </main>
+      <button
+        type="button"
+        onClick={() => setCaptureOpen(true)}
+        aria-label="Quick Capture"
+        className="absolute bottom-20 right-4 z-30 flex size-14 items-center justify-center rounded-full bg-neutral-900 text-white shadow-lg active:scale-95"
+      >
+        <Plus className="size-6" strokeWidth={2.5} aria-hidden />
+      </button>
       <BottomNav tab={tab} onTabChange={setTab} />
       <QuickCaptureModal
         open={captureOpen}
