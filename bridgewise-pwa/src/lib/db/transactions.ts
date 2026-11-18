@@ -5,6 +5,7 @@ import type {
   LedgerEntryType,
   Order,
   OrderLine,
+  OrderStatus,
   ParseResult,
   Sku,
   StockColor,
@@ -905,4 +906,36 @@ export async function processReturn(
     }
     throw error;
   }
+}
+
+/** Statuses that may never be hard-deleted (they carry committed ledger entries). */
+const PROTECTED_STATUSES: ReadonlySet<OrderStatus> = new Set([
+  "CONFIRMED_SALE",
+  "REFUNDED",
+]);
+
+export type DeleteOrdersResult =
+  | { ok: true; deleted: number }
+  | { ok: false; reason: "protected_rows" };
+
+/**
+ * Hard-deletes orders by ID in a single transaction.
+ * Refuses the entire batch if any order has a protected status.
+ * Does NOT touch ledger_entries or inventory — only call for
+ * PENDING_INQUIRY / CANCELLED / EXPIRED rows.
+ */
+export async function deleteOrders(
+  orderIds: string[],
+): Promise<DeleteOrdersResult> {
+  return db.transaction("rw", db.orders, async () => {
+    const rows = await db.orders.bulkGet(orderIds);
+    for (const row of rows) {
+      if (!row) continue;
+      if (PROTECTED_STATUSES.has(row.status)) {
+        return { ok: false, reason: "protected_rows" };
+      }
+    }
+    await db.orders.bulkDelete(orderIds);
+    return { ok: true, deleted: orderIds.length };
+  });
 }

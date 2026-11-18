@@ -16,6 +16,7 @@ import {
   cancelOrArchiveOrder,
   commitConfirmedOrder,
   createPendingOrder,
+  deleteOrders,
   expireStalePendingOrders,
   PENDING_TTL_MS,
   processReturn,
@@ -821,6 +822,9 @@ export function OrderStream() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const visible = useMemo(
     () => newestFirst((orders ?? []).filter(isInboxVisible)),
@@ -892,6 +896,48 @@ export function OrderStream() {
     });
   }
 
+  function toggleCheck(orderId: string) {
+    setDeleteError(null);
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setDeleteError(null);
+    if (visible.every((o) => checkedIds.has(o.order_id))) {
+      setCheckedIds(new Set());
+    } else {
+      setCheckedIds(new Set(visible.map((o) => o.order_id)));
+    }
+  }
+
+  async function onDeleteSelected() {
+    if (deleting) return;
+    const ids = [...checkedIds];
+    const toDelete = (orders ?? []).filter((o) => ids.includes(o.order_id));
+    const blocked = toDelete.filter(
+      (o) => o.status === "CONFIRMED_SALE" || o.status === "REFUNDED",
+    );
+    if (blocked.length > 0) {
+      setDeleteError("Confirmed and refunded orders cannot be deleted.");
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteOrders(ids);
+      setCheckedIds(new Set());
+      setDeleteError(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (orders === undefined || skus === undefined || customers === undefined) {
     return (
       <section className="flex min-h-full flex-col items-center justify-center px-6 py-10 text-center">
@@ -934,14 +980,27 @@ export function OrderStream() {
         <div className="mt-6 overflow-x-auto rounded-xl border border-neutral-200 bg-white">
           <table className="w-full table-fixed border-collapse text-sm">
             <colgroup>
-              <col className="w-[22%]" />
-              <col className="w-[26%]" />
-              <col className="w-[16%]" />
-              <col className="w-[16%]" />
+              <col className="w-[7%]" />
               <col className="w-[20%]" />
+              <col className="w-[22%]" />
+              <col className="w-[14%]" />
+              <col className="w-[13%]" />
+              <col className="w-[24%]" />
             </colgroup>
             <thead>
               <tr className="border-b border-neutral-200">
+                <th scope="col" className="px-2 py-2 text-center">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all orders"
+                    checked={visible.length > 0 && visible.every((o) => checkedIds.has(o.order_id))}
+                    ref={(el) => {
+                      if (el) el.indeterminate = visible.some((o) => checkedIds.has(o.order_id)) && !visible.every((o) => checkedIds.has(o.order_id));
+                    }}
+                    onChange={toggleAll}
+                    className="accent-[#17104A]"
+                  />
+                </th>
                 <th
                   scope="col"
                   className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-neutral-500"
@@ -988,16 +1047,32 @@ export function OrderStream() {
                   ? "(unparsed)"
                   : formatLines(order.items);
 
+                const isChecked = checkedIds.has(order.order_id);
+
                 return (
                   <tr
                     key={order.order_id}
                     onClick={() => setSelectedOrderId(order.order_id)}
                     className={`cursor-pointer transition-colors ${
-                      isPending
-                        ? "bg-white hover:bg-amber-50"
-                        : "bg-[#F0FDF8] hover:bg-emerald-50"
+                      isChecked
+                        ? "bg-[#EEF0FF]"
+                        : isPending
+                          ? "bg-white hover:bg-amber-50"
+                          : "bg-[#F0FDF8] hover:bg-emerald-50"
                     }`}
                   >
+                    <td
+                      className="px-2 py-3 text-center"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        aria-label={`Select order for ${order.customer_name}`}
+                        checked={isChecked}
+                        onChange={() => toggleCheck(order.order_id)}
+                        className="accent-[#17104A]"
+                      />
+                    </td>
                     <td
                       className={`max-w-0 overflow-hidden border-l-4 px-3 py-3 ${
                         isPending
@@ -1119,6 +1194,31 @@ export function OrderStream() {
           }
           onClose={() => setSelectedOrderId(null)}
         />
+      ) : null}
+
+      {checkedIds.size > 0 ? (
+        <div className="fixed bottom-14 inset-x-0 z-20 flex justify-center">
+          <div className="w-full max-w-md border-t border-[#E8E6F0] bg-white px-4">
+            <div className="flex h-14 items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-[#0F0A2E]">
+                {checkedIds.size} selected
+              </p>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => void onDeleteSelected()}
+                className="rounded-[10px] bg-[#EF4444] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+            {deleteError ? (
+              <p className="pb-2 text-xs font-medium text-[#EF4444]" role="alert">
+                {deleteError}
+              </p>
+            ) : null}
+          </div>
+        </div>
       ) : null}
     </section>
   );
