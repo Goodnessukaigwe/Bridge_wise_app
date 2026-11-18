@@ -145,7 +145,7 @@ export function RestockSheet({
           </div>
           {productHint ? (
             <p className="mb-3 text-sm text-amber-800">
-              Couldn’t match "{productHint}". Pick a product.
+              Couldn&apos;t match &ldquo;{productHint}&rdquo;. Pick a product.
             </p>
           ) : null}
           <form onSubmit={onSubmit} className="flex flex-col gap-3">
