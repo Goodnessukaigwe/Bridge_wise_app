@@ -114,25 +114,24 @@ export async function attachCustomerToWalkInOrder(
 }
 
 /**
- * Saves (or clears) a customer's WhatsApp number. Writes the customers store
- * only: never stock, the ledger or order status. An invalid number is treated
- * as missing (returns "invalid") and nothing is blocked.
+ * Saves (or clears) a customer's phone number. Writes the customers store
+ * only: never stock, the ledger or order status. A valid number is stored as
+ * international digits; anything else is kept exactly as typed (it is simply
+ * treated as missing when sending). Saving is never blocked.
  */
 export async function setCustomerPhone(
   name: string,
   rawPhone: string,
-): Promise<"saved" | "cleared" | "invalid" | "no_customer"> {
+): Promise<"saved" | "cleared" | "no_customer"> {
   if (isWalkInName(name)) return "no_customer";
   const trimmed = rawPhone.trim();
-  const phone = trimmed ? normalisePhone(trimmed) : null;
-  if (trimmed && !phone) return "invalid";
   const existing =
     (await db.customers.get(customerId(name))) ??
     (await upsertCustomer({ name }));
   if (!existing) return "no_customer";
   const next: Customer = { ...existing };
-  if (phone) next.phone = phone;
+  if (trimmed) next.phone = normalisePhone(trimmed) ?? trimmed;
   else delete next.phone;
   await db.customers.put(next);
-  return phone ? "saved" : "cleared";
+  return trimmed ? "saved" : "cleared";
 }

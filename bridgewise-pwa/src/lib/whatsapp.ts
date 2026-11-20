@@ -30,9 +30,10 @@ type ContactsApi = {
   select: (
     props: string[],
     opts?: { multiple?: boolean },
-  ) => Promise<{ tel?: string[] }[]>;
+  ) => Promise<{ name?: string[]; tel?: string[] }[]>;
 };
 
+/** Contact Picker API: Chrome on Android over HTTPS only. */
 export function canPickContacts(): boolean {
   return (
     typeof navigator !== "undefined" &&
@@ -42,14 +43,31 @@ export function canPickContacts(): boolean {
   );
 }
 
-/** Returns the first phone number of the chosen contact, or null. */
-export async function pickContactPhone(): Promise<string | null> {
+export type PickedContact = { name: string; tels: string[] };
+
+/**
+ * Must be called straight from a tap. Reads only the one contact the vendor
+ * chooses (name and number); nothing is uploaded or stored by this call.
+ * Returns null on cancel or any error: never throws, never shows errors.
+ */
+export async function pickContact(): Promise<PickedContact | null> {
   if (!canPickContacts()) return null;
   const api = (navigator as unknown as { contacts: ContactsApi }).contacts;
   try {
-    const picked = await api.select(["tel"], { multiple: false });
-    return picked[0]?.tel?.[0] ?? null;
+    const picked = await api.select(["name", "tel"], { multiple: false });
+    const c = picked[0];
+    if (!c) return null;
+    const tels = [
+      ...new Set((c.tel ?? []).map((t) => t.trim()).filter(Boolean)),
+    ];
+    return { name: c.name?.[0]?.trim() ?? "", tels };
   } catch {
     return null;
   }
+}
+
+/** Opens a link from a tap. Falls back to navigating if the popup is blocked. */
+export function openLink(url: string): void {
+  const win = window.open(url, "_blank", "noopener,noreferrer");
+  if (!win) window.location.href = url;
 }

@@ -12,7 +12,6 @@ import {
 } from "react";
 import { isWalkInName } from "@/lib/ai/identity";
 import { attachCustomerToWalkInOrder, setCustomerPhone } from "@/lib/db/customers";
-import { canPickContacts, normalisePhone, pickContactPhone } from "@/lib/whatsapp";
 import { customerId } from "@/lib/db/dexie";
 import {
   cancelOrArchiveOrder,
@@ -26,7 +25,9 @@ import {
   type ReturnOrderResult,
 } from "@/lib/db/transactions";
 import { useCustomers, useOrders, useSkus } from "@/lib/db/hooks";
-import { shareReceipt } from "@/components/orders/ReceiptGenerator";
+import { ReceiptSheet } from "@/components/orders/ReceiptSheet";
+import { PhoneField } from "@/components/ui/PhoneField";
+import { normalisePhone } from "@/lib/whatsapp";
 import type {
   CaptureMethod,
   Customer,
@@ -239,15 +240,19 @@ function WalkInCustomerPicker({
 
 function NewInquirySheet({
   skus,
+  customers,
   onClose,
 }: {
   skus: Sku[];
+  customers: Customer[];
   onClose: () => void;
 }) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
+  const [phoneTouched, setPhoneTouched] = useState(false);
   const [skuId, setSkuId] = useState(skus[0]?.sku_id ?? "");
   const [qty, setQty] = useState("1");
   const [error, setError] = useState<string | null>(null);
@@ -268,6 +273,15 @@ function NewInquirySheet({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  // Same customer again: pre-fill their saved number (unless the vendor typed one).
+  useEffect(() => {
+    if (phoneTouched) return;
+    const known = name.trim()
+      ? customers.find((c) => c.customer_id === customerId(name.trim()))
+      : undefined;
+    setPhone(known?.phone ?? "");
+  }, [name, customers, phoneTouched]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -297,6 +311,8 @@ function NewInquirySheet({
         capture_method: "manual",
         intent_classification: "INQUIRY",
       });
+      // Separate, customer-only write: remember the number for next time.
+      if (phone.trim()) await setCustomerPhone(customer, phone);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save the order. Please try again.");
@@ -356,6 +372,14 @@ function NewInquirySheet({
                   placeholder="Chioma"
                 />
               </label>
+              <PhoneField
+                value={phone}
+                onChange={(v) => {
+                  setPhone(v);
+                  setPhoneTouched(true);
+                }}
+                onContactName={(n) => setName((cur) => (cur.trim() ? cur : n))}
+              />
               <label className="label">
                 Delivery address
                 <input
@@ -430,6 +454,7 @@ function OrderDetailSheet({
   onCancel,
   onReturn,
   onAttachCustomer,
+  onSendReceipt,
   onClose,
 }: {
   order: Order;
@@ -443,16 +468,13 @@ function OrderDetailSheet({
   onCancel: () => void;
   onReturn: () => void;
   onAttachCustomer: (customerId: string) => void;
+  onSendReceipt: () => void;
   onClose: () => void;
 }) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   const [activeTab, setActiveTab] = useState<"details" | "history">("details");
-  const [shareStatus, setShareStatus] = useState<string | null>(null);
-  const [shareFailed, setShareFailed] = useState(false);
-  const [sharing, setSharing] = useState(false);
   const [phoneDraft, setPhoneDraft] = useState("");
-  const [phoneEditing, setPhoneEditing] = useState(false);
   const [phoneNote, setPhoneNote] = useState<string | null>(null);
 
   const pending = order.status === "PENDING_INQUIRY" && !order.ledger_committed;
@@ -493,44 +515,22 @@ function OrderDetailSheet({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const savedPhone = normalisePhone(linked?.phone);
+  const storedPhone = linked?.phone ?? "";
 
-  async function savePhone(raw: string) {
-    const result = await setCustomerPhone(order.customer_name, raw);
-    if (result === "invalid") {
-      setPhoneNote("That number does not look right, so we have not saved it.");
-      return;
-    }
-    setPhoneNote(result === "saved" ? "Number saved." : null);
-    setPhoneEditing(false);
-  }
+  // Pre-fill from the saved number whenever the customer changes.
+  useEffect(() => {
+    setPhoneDraft(storedPhone);
+  }, [storedPhone, order.order_id]);
 
-  async function pickFromContacts() {
-    const picked = await pickContactPhone();
-    if (picked) {
-      setPhoneDraft(picked);
-      await savePhone(picked);
-    }
-  }
-
-  async function onShare() {
-    if (sharing) return;
-    setSharing(true);
-    setShareStatus(null);
-    setShareFailed(false);
-    try {
-      const result = await shareReceipt(order, savedPhone);
-      if (result.status === "whatsapp") setShareStatus("Opening WhatsApp…");
-      else if (result.status === "shared") setShareStatus("Receipt shared");
-      else if (result.status === "copied") setShareStatus("Receipt copied. Paste it in WhatsApp.");
-      else if (result.status === "cancelled") setShareStatus("Receipt not shared");
-      else {
-        setShareFailed(true);
-        setShareStatus(result.message);
-      }
-    } finally {
-      setSharing(false);
-    }
+  async function savePhone() {
+    await setCustomerPhone(order.customer_name, phoneDraft);
+    setPhoneNote(
+      phoneDraft.trim() && !normalisePhone(phoneDraft)
+        ? "Saved. This number may not work on WhatsApp, so check it."
+        : phoneDraft.trim()
+          ? "Number saved."
+          : null,
+    );
   }
 
   return (
@@ -560,6 +560,7 @@ function OrderDetailSheet({
               </h2>
               <p className="text-[13px] font-medium text-[#55517F]">
                 {orderLabel(order)}
+                {linked?.phone ? ` · ${linked.phone}` : ""}
               </p>
             </div>
             <button
@@ -652,57 +653,24 @@ function OrderDetailSheet({
 
               {!walkIn ? (
                 <div className="mt-3 rounded-2xl bg-[#F4F3FF] px-3 py-3">
-                  <p className="text-[13px] font-bold text-[#3B3670]">
-                    WhatsApp number (optional)
-                  </p>
-                  {savedPhone && !phoneEditing ? (
-                    <div className="mt-1 flex items-center justify-between gap-2">
-                      <p className="amount text-[16px] font-bold text-[#0F0A2E]">
-                        +{savedPhone}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPhoneDraft(savedPhone);
-                          setPhoneEditing(true);
-                          setPhoneNote(null);
-                        }}
-                        className="min-h-11 px-2 text-[14px] font-bold text-[#17104A] underline"
-                      >
-                        Change
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="mt-1 flex flex-col gap-2">
-                      <input
-                        value={phoneDraft}
-                        onChange={(e) => setPhoneDraft(e.target.value)}
-                        inputMode="tel"
-                        autoComplete="tel"
-                        aria-label="Customer WhatsApp number"
-                        placeholder="0803 123 4567"
-                        className={fieldClass}
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void savePhone(phoneDraft)}
-                          className="btn btn-secondary flex-1"
-                        >
-                          Save number
-                        </button>
-                        {canPickContacts() ? (
-                          <button
-                            type="button"
-                            onClick={() => void pickFromContacts()}
-                            className="btn btn-quiet flex-1"
-                          >
-                            Pick from contacts
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  )}
+                  <PhoneField
+                    value={phoneDraft}
+                    onChange={(v) => {
+                      setPhoneDraft(v);
+                      setPhoneNote(null);
+                    }}
+                    label="Phone number (optional)"
+                    ariaLabel="Customer phone number"
+                  />
+                  {phoneDraft.trim() !== storedPhone.trim() ? (
+                    <button
+                      type="button"
+                      onClick={() => void savePhone()}
+                      className="btn btn-secondary mt-2 w-full"
+                    >
+                      Save number
+                    </button>
+                  ) : null}
                   {phoneNote ? (
                     <p className="mt-1 text-[13px] font-semibold text-[#55517F]" role="status">
                       {phoneNote}
@@ -770,21 +738,13 @@ function OrderDetailSheet({
                   <>
                     <button
                       type="button"
-                      disabled={busy || sharing}
-                      onClick={onShare}
+                      disabled={busy}
+                      onClick={onSendReceipt}
                       className="btn btn-primary min-h-[54px]"
                     >
                       <Share2 className="size-5" aria-hidden />
-                      {sharing ? "Opening…" : "Send receipt on WhatsApp"}
+                      Send receipt
                     </button>
-                    {shareStatus ? (
-                      <p
-                        className={`text-[14px] font-semibold ${shareFailed ? "text-red-700" : "text-[#065F46]"}`}
-                        role="status"
-                      >
-                        {shareStatus}
-                      </p>
-                    ) : null}
                     <button
                       type="button"
                       disabled={busy}
@@ -802,6 +762,11 @@ function OrderDetailSheet({
           {/* History tab */}
           {activeTab === "history" && (
             <div>
+              {linked?.phone ? (
+                <p className="amount mb-2 text-[14px] font-semibold text-[#55517F]">
+                  {order.customer_name} · {linked.phone}
+                </p>
+              ) : null}
               {history.length === 0 ? (
                 <div className="py-10 text-center">
                   <p className="text-[15px] text-[#55517F]">
@@ -934,6 +899,7 @@ export function OrderStream() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [soldName, setSoldName] = useState<string | null>(null);
+  const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (soldName === null) return;
@@ -946,6 +912,12 @@ export function OrderStream() {
     [orders],
   );
 
+  const phoneByCustomer = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of customers ?? []) if (c.phone) m.set(c.customer_id, c.phone);
+    return m;
+  }, [customers]);
+
   const selectedOrder = useMemo(
     () =>
       selectedOrderId
@@ -953,6 +925,10 @@ export function OrderStream() {
         : undefined,
     [selectedOrderId, orders],
   );
+
+  const receiptOrder = receiptOrderId
+    ? (orders ?? []).find((o) => o.order_id === receiptOrderId)
+    : undefined;
 
   async function run(orderId: string | null, action: () => Promise<void>) {
     if (busy) return;
@@ -1193,6 +1169,11 @@ export function OrderStream() {
                       <p className="truncate text-[15px] font-bold text-[#0F0A2E]">
                         {order.customer_name}
                       </p>
+                      {phoneByCustomer.get(customerId(order.customer_name)) ? (
+                        <p className="amount truncate text-[12px] text-[#55517F]">
+                          {phoneByCustomer.get(customerId(order.customer_name))}
+                        </p>
+                      ) : null}
                       <span
                         className={`pill mt-1 !px-2 !text-[11.5px] ${
                           isPending ? "pill-amber" : "pill-green"
@@ -1249,7 +1230,7 @@ export function OrderStream() {
                           <button
                             type="button"
                             disabled={busy}
-                            onClick={() => setSelectedOrderId(order.order_id)}
+                            onClick={() => setReceiptOrderId(order.order_id)}
                             aria-label={`Send receipt to ${order.customer_name}`}
                             className="icon-btn bg-[#17104A] text-white"
                           >
@@ -1281,7 +1262,11 @@ export function OrderStream() {
       ) : null}
 
       {sheetOpen ? (
-        <NewInquirySheet skus={catalog} onClose={() => setSheetOpen(false)} />
+        <NewInquirySheet
+          skus={catalog}
+          customers={customers}
+          onClose={() => setSheetOpen(false)}
+        />
       ) : null}
 
       {selectedOrder ? (
@@ -1302,7 +1287,18 @@ export function OrderStream() {
           onAttachCustomer={(id) =>
             onAttachCustomer(selectedOrder.order_id, id)
           }
+          onSendReceipt={() => setReceiptOrderId(selectedOrder.order_id)}
           onClose={() => setSelectedOrderId(null)}
+        />
+      ) : null}
+
+      {receiptOrder &&
+      receiptOrder.status === "CONFIRMED_SALE" &&
+      receiptOrder.ledger_committed ? (
+        <ReceiptSheet
+          order={receiptOrder}
+          phone={phoneByCustomer.get(customerId(receiptOrder.customer_name))}
+          onClose={() => setReceiptOrderId(null)}
         />
       ) : null}
 

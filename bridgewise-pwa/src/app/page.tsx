@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CustomersScreen } from "@/components/customers/CustomersScreen";
+import { BusinessSheet } from "@/components/shell/BusinessSheet";
 import { DraggableFab } from "@/components/capture/DraggableFab";
 import { QuickCaptureModal } from "@/components/capture/QuickCaptureModal";
 import { PocketStatement } from "@/components/finance/PocketStatement";
@@ -16,6 +18,8 @@ import {
 export default function Home() {
   const [tab, setTab] = useState<WorkspaceTab>("order");
   const [captureOpen, setCaptureOpen] = useState(false);
+  const [customersOpen, setCustomersOpen] = useState(false);
+  const [businessOpen, setBusinessOpen] = useState(false);
 
   useEffect(() => {
     void expireStalePendingOrders();
@@ -27,7 +31,10 @@ export default function Home() {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <TopBar />
+      <TopBar
+        onOpenCustomers={() => setCustomersOpen(true)}
+        onOpenBusiness={() => setBusinessOpen(true)}
+      />
       <main className="min-h-0 flex-1 overflow-y-auto">
         <div key={tab} style={{ animation: "tabFadeIn 150ms ease" }}>
           {tab === "order" && <OrderStream />}
@@ -37,6 +44,12 @@ export default function Home() {
       </main>
       <DraggableFab onClick={() => setCaptureOpen(true)} />
       <BottomNav tab={tab} onTabChange={setTab} />
+      {customersOpen ? (
+        <CustomersScreen onClose={() => setCustomersOpen(false)} />
+      ) : null}
+      {businessOpen ? (
+        <BusinessSheet onClose={() => setBusinessOpen(false)} />
+      ) : null}
       <QuickCaptureModal
         open={captureOpen}
         onClose={() => setCaptureOpen(false)}
