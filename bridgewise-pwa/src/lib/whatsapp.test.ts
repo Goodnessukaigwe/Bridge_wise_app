@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalisePhone, whatsappUrl } from "./whatsapp";
+import { extractPhone, normalisePhone, whatsappUrl } from "./whatsapp";
 
 describe("normalisePhone", () => {
   it("handles common Nigerian formats", () => {
@@ -7,6 +7,7 @@ describe("normalisePhone", () => {
     expect(normalisePhone("+234 (803) 123-4567")).toBe("2348031234567");
     expect(normalisePhone("2348031234567")).toBe("2348031234567");
     expect(normalisePhone("8031234567")).toBe("2348031234567");
+    expect(normalisePhone("+234 (0) 803 123 4567")).toBe("2348031234567");
   });
   it("treats rubbish as missing", () => {
     expect(normalisePhone("")).toBeNull();
@@ -28,5 +29,16 @@ describe("whatsappUrl", () => {
   });
   it("falls back to the chat picker without a number", () => {
     expect(whatsappUrl("Hi", "nope")).toBe("https://wa.me/?text=Hi");
+  });
+});
+
+describe("extractPhone", () => {
+  it("finds the number inside copied contact text", () => {
+    expect(extractPhone("Chioma Nwosu\n+234 803 123 4567")).toBe("2348031234567");
+    expect(extractPhone("mobile (0803) 123-4567 home")).toBe("2348031234567");
+  });
+  it("returns null when there is no number", () => {
+    expect(extractPhone("Chioma Nwosu")).toBeNull();
+    expect(extractPhone("")).toBeNull();
   });
 });

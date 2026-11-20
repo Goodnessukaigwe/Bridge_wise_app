@@ -379,6 +379,7 @@ function NewInquirySheet({
                   setPhoneTouched(true);
                 }}
                 onContactName={(n) => setName((cur) => (cur.trim() ? cur : n))}
+                onCustomerName={(n) => setName(n)}
               />
               <label className="label">
                 Delivery address

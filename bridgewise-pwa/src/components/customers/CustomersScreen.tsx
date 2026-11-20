@@ -65,7 +65,13 @@ export function CustomersScreen({ onClose }: { onClose: () => void }) {
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return [...(customers ?? [])]
-      .filter((c) => !q || c.name.toLowerCase().includes(q) || (c.phone ?? "").replace(/\D/g, "").includes(q.replace(/\D/g, "") || "\u0000") || (c.phone ?? "").toLowerCase().includes(q))
+      .filter((c) => {
+        if (!q) return true;
+        if (c.name.toLowerCase().includes(q)) return true;
+        // 0803… must find 234803…, so ignore leading zeros.
+        const digits = q.replace(/\D/g, "").replace(/^0+/, "");
+        return !!digits && (c.phone ?? "").replace(/\D/g, "").includes(digits);
+      })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [customers, query]);
 

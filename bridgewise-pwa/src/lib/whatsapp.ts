@@ -10,6 +10,10 @@ export function normalisePhone(raw: string | undefined | null): string | null {
   let digits = raw.replace(/\D/g, "");
   if (!digits) return null;
   if (digits.startsWith("00")) digits = digits.slice(2);
+  // +234 (0) 803… : drop the redundant trunk zero.
+  if (digits.startsWith("2340") && digits.length === 14) {
+    digits = `234${digits.slice(4)}`;
+  }
   if (digits.startsWith("0") && digits.length === 11) {
     digits = `234${digits.slice(1)}`;
   } else if (digits.length === 10 && /^[789]/.test(digits)) {
@@ -38,6 +42,7 @@ export function canPickContacts(): boolean {
   return (
     typeof navigator !== "undefined" &&
     "contacts" in navigator &&
+    "ContactsManager" in window &&
     typeof (navigator as unknown as { contacts?: ContactsApi }).contacts
       ?.select === "function"
   );
@@ -70,4 +75,16 @@ export async function pickContact(): Promise<PickedContact | null> {
 export function openLink(url: string): void {
   const win = window.open(url, "_blank", "noopener,noreferrer");
   if (!win) window.location.href = url;
+}
+
+/**
+ * Pulls the first phone-like number out of pasted text (which may include a
+ * name, brackets, spaces or a +234 prefix) and normalises it. Returns null if
+ * the text holds no phone-like number.
+ */
+export function extractPhone(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const match = text.match(/\+?\(?\d[\d\s().-]{5,}\d/);
+  if (!match) return null;
+  return normalisePhone(match[0]) ?? match[0].replace(/[^\d+]/g, "");
 }
