@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 const STORAGE_KEY = "fab_position";
@@ -169,13 +169,13 @@ export function DraggableFab({ onClick }: { onClick: () => void }) {
       onPointerMove={onPointerMove}
       onPointerUp={finish}
       onPointerCancel={finish}
-      aria-label="Add from a chat or note"
+      aria-label="Ask the OnRecord assistant"
       style={style}
       className={`absolute z-30 flex size-14 select-none items-center justify-center rounded-full bg-[#F59E0B] text-white shadow-[0_4px_14px_rgba(245,158,11,0.4)] ${
         drag ? "" : "active:scale-95"
       }`}
     >
-      <Plus className="size-6" strokeWidth={2.5} aria-hidden />
+      <Sparkles className="size-6" strokeWidth={2.25} aria-hidden />
     </button>
   );
 }

@@ -975,3 +975,108 @@ export async function deleteOrders(
     return { ok: true, deleted: orderIds.length };
   });
 }
+
+export type UpdatePendingOrderInput = {
+  order_id: string;
+  customer_name?: string;
+  delivery_address?: string;
+  customer_phone?: string;
+  /** Replaces all lines. Prices are copied from the Stock Room, as on create. */
+  items?: Array<{ product_id: string; quantity: number }>;
+  payment_signal_detected?: boolean;
+  suggested_status?: SuggestedConfirmStatus | null;
+};
+
+export type UpdatePendingOrderResult =
+  | { ok: true; outcome: "updated"; before: Order; order: Order }
+  | {
+      ok: true;
+      outcome: "noop";
+      reason: "missing_order" | "not_pending" | "already_committed";
+    };
+
+/**
+ * Edit a pending order only. Never touches inventory, the ledger or status.
+ * Committed, cancelled, expired and refunded orders are refused.
+ */
+export async function updatePendingOrder(
+  input: UpdatePendingOrderInput,
+): Promise<UpdatePendingOrderResult> {
+  return db.transaction(
+    "rw",
+    [db.orders, db.inventory, db.customers],
+    async () => {
+      const before = await db.orders.get(input.order_id);
+      if (!before) return { ok: true, outcome: "noop", reason: "missing_order" };
+      if (before.ledger_committed) {
+        return { ok: true, outcome: "noop", reason: "already_committed" };
+      }
+      if (before.status !== "PENDING_INQUIRY") {
+        return { ok: true, outcome: "noop", reason: "not_pending" };
+      }
+
+      let items = before.items;
+      if (input.items) {
+        if (input.items.length === 0) {
+          throw new Error("An order needs at least one item");
+        }
+        items = [];
+        for (const item of input.items) {
+          assertPositiveInt(item.quantity, "Quantity");
+          const sku = await db.inventory.get(item.product_id);
+          if (!sku) throw new Error("This product is no longer in your Stock Room");
+          items.push({
+            product_id: sku.sku_id,
+            product_name: sku.display_name,
+            quantity: item.quantity,
+            unit_cost_price: sku.unit_cost_price,
+            unit_selling_price: sku.unit_selling_price,
+          });
+        }
+      }
+
+      const name = input.customer_name?.trim() || before.customer_name;
+      const address =
+        input.delivery_address !== undefined
+          ? input.delivery_address.trim()
+          : before.delivery_address;
+      const phone = input.customer_phone?.trim() || before.customer_phone;
+      const customer = await upsertCustomer({ name, address, phone });
+
+      const order: Order = {
+        ...before,
+        customer_name: name,
+        delivery_address: address,
+        items,
+        ...(customer ? { customer_id: customer.customer_id } : {}),
+        ...(phone ? { customer_phone: phone } : {}),
+        ...(input.payment_signal_detected !== undefined
+          ? { payment_signal_detected: input.payment_signal_detected }
+          : {}),
+      };
+      if (input.suggested_status === null) delete order.suggested_status;
+      else if (input.suggested_status) {
+        order.suggested_status = input.suggested_status;
+      }
+      await db.orders.put(order);
+      return { ok: true, outcome: "updated", before, order };
+    },
+  );
+}
+
+/**
+ * Undo for an edit: puts back an earlier copy of an order, but only while the
+ * order is still pending and uncommitted. Never touches stock or the ledger.
+ */
+export async function restorePendingOrder(snapshot: Order): Promise<boolean> {
+  if (snapshot.ledger_committed || snapshot.status !== "PENDING_INQUIRY") {
+    return false;
+  }
+  return db.transaction("rw", db.orders, async () => {
+    const current = await db.orders.get(snapshot.order_id);
+    if (!current || current.ledger_committed) return false;
+    if (current.status !== "PENDING_INQUIRY") return false;
+    await db.orders.put(snapshot);
+    return true;
+  });
+}
