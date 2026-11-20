@@ -1,67 +1,59 @@
 "use client";
 
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
-const KEY = "onrecord_last_open";
-const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-const SHOW_MS = 1500;
+const SHOW_MS = 1200;
 const FADE_MS = 300;
 const REDUCED_MS = 1000;
 
 type Phase = "off" | "in" | "out";
 
-function shouldShow(): boolean {
-  if (window.location.pathname.startsWith("/share-target")) return false;
-  let last: number | null = null;
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    last = raw ? Number(raw) : null;
-  } catch {
-    return false;
-  }
-  if (last == null || !Number.isFinite(last)) return true;
-  return Date.now() - last >= SEVEN_DAYS_MS;
-}
+/** Once per page load. A fresh launch reloads the page, so the flag resets. */
+let shownThisLoad = false;
 
 /**
- * Overlay only. Never blocks the app underneath (pointer-events: none) and
- * works offline. Shown on first open and after 7+ days away.
+ * Overlay only: the real app loads and runs behind it. Plays on every fresh
+ * launch (except from the Share Target), once per page load, and can be
+ * tapped to skip. Works offline: no network use.
  */
 export function Splash() {
   const [phase, setPhase] = useState<Phase>("off");
   const [reduced, setReduced] = useState(false);
+  const timers = useRef<number[]>([]);
 
   useLayoutEffect(() => {
-    const show = shouldShow();
-    try {
-      window.localStorage.setItem(KEY, String(Date.now()));
-    } catch {
-      /* ignore */
-    }
-    if (!show) return;
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    if (shownThisLoad) return;
+    shownThisLoad = true;
+    if (window.location.pathname.startsWith("/share-target")) return;
+
+    const reduce =
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    const hold = reduce ? REDUCED_MS : SHOW_MS;
     setReduced(reduce);
     setPhase("in");
-    const t1 = window.setTimeout(
-      () => setPhase("out"),
-      reduce ? REDUCED_MS : SHOW_MS,
-    );
-    const t2 = window.setTimeout(
-      () => setPhase("off"),
-      (reduce ? REDUCED_MS : SHOW_MS) + FADE_MS,
-    );
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-    };
+    timers.current = [
+      window.setTimeout(() => setPhase("out"), hold),
+      window.setTimeout(() => setPhase("off"), hold + FADE_MS),
+    ];
+    return () => timers.current.forEach(window.clearTimeout);
   }, []);
+
+  function skip() {
+    if (phase !== "in") return;
+    timers.current.forEach(window.clearTimeout);
+    setPhase("out");
+    timers.current = [window.setTimeout(() => setPhase("off"), FADE_MS)];
+  }
 
   if (phase === "off") return null;
 
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#17104A]"
+      onPointerDown={skip}
+      className={`fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#17104A] ${
+        phase === "out" ? "pointer-events-none" : ""
+      }`}
       style={{
         opacity: phase === "out" ? 0 : 1,
         transition: `opacity ${FADE_MS}ms ease`,
