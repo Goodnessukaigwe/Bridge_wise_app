@@ -27,27 +27,34 @@ export function TopBar() {
   const queued = online && (queueLength ?? 0) > 0;
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 bg-[#17104A] px-4">
+    <header className="flex h-14 shrink-0 items-center gap-2.5 bg-gradient-to-b from-[#241A6E] to-[#17104A] px-4 shadow-[0_4px_14px_-6px_rgba(23,16,74,0.6)]">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/onrecord_icon_v3.svg"
+        src="/icons/onrecord-icon.svg"
         alt=""
         aria-hidden="true"
         className="size-9 shrink-0"
       />
-      <p className="text-[17px] font-semibold tracking-tight text-white">
+      <p className="text-[18px] font-extrabold tracking-tight text-white">
         OnRecord
       </p>
       <span
-        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-white ${
+        role="status"
+        className={`ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-bold ${
           !online
-            ? "bg-neutral-500/40"
+            ? "bg-[#FDE7C8] text-[#7A4300]"
             : queued
-              ? "bg-amber-500/40"
-              : "bg-emerald-500/40"
+              ? "bg-[#FEF0C7] text-[#7A4300]"
+              : "bg-[#D3F5E5] text-[#065F46]"
         }`}
       >
-        {!online ? "OFFLINE" : queued ? "QUEUED" : "SYNCED"}
+        <span
+          aria-hidden
+          className={`size-2 rounded-full ${
+            !online ? "bg-[#F97316]" : queued ? "bg-[#F59E0B]" : "bg-[#10B981]"
+          }`}
+        />
+        {!online ? "Working offline" : queued ? "Waiting for network" : "Saved"}
       </span>
     </header>
   );

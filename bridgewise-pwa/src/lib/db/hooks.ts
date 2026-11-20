@@ -54,3 +54,14 @@ export function useDailyLedger(dateKey: string) {
     [dateKey],
   );
 }
+
+/** Every SALE ledger row (read-only, for the product dashboard). */
+export function useSaleEntries() {
+  return useLiveQuery(
+    async () => {
+      if (!canUseIdb) return [];
+      return db.ledger_entries.where("entry_type").equals("SALE").toArray();
+    },
+    [],
+  );
+}

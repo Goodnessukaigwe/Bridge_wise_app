@@ -25,8 +25,7 @@ function parseMoney(raw: string): number {
   return Number(trimmed);
 }
 
-const fieldClass =
-  "min-h-11 w-full rounded-[10px] border border-[#E8E6F0] bg-white px-3 text-sm text-[#0F0A2E] focus:border-[#17104A] outline-none";
+const fieldClass = "field";
 
 export function RestockSheet({
   skus,
@@ -83,13 +82,13 @@ export function RestockSheet({
     setError(null);
     try {
       if (!skuId) {
-        throw new Error("Pick a product");
+        throw new Error("Please pick a product");
       }
       if (isMaker) {
         const bc = parseMoney(batchCost);
         const bq = parsePositiveInt(batchQty);
-        if (!Number.isFinite(bc) || bc <= 0) throw new Error("Batch cost must be more than 0");
-        if (!Number.isInteger(bq) || bq < 1) throw new Error("Units per batch must be 1 or more");
+        if (!Number.isFinite(bc) || bc <= 0) throw new Error("What the batch cost you must be more than ₦0");
+        if (!Number.isInteger(bq) || bq < 1) throw new Error("Items in this batch must be 1 or more");
         await commitRestock({
           sku_id: skuId,
           qty: bq,
@@ -100,7 +99,7 @@ export function RestockSheet({
       } else {
         const units = parsePositiveInt(qty);
         if (!Number.isInteger(units) || units < 1) {
-          throw new Error("Qty must be a whole number of 1 or more");
+          throw new Error("How many came in must be a whole number, 1 or more");
         }
         const total_cost = parseMoney(total);
         await commitRestock({ sku_id: skuId, qty: units, total_cost });
@@ -108,7 +107,7 @@ export function RestockSheet({
       onSaved?.();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not restock");
+      setError(err instanceof Error ? err.message : "Could not add the stock. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -116,40 +115,41 @@ export function RestockSheet({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-center">
-      <div className="relative flex h-full w-full max-w-md items-end bg-neutral-900/40">
+      <div className="sheet-backdrop relative flex h-full w-full max-w-md items-end">
         <button
           type="button"
           className="absolute inset-0"
-          aria-label="Dismiss restock form"
+          aria-label="Close"
           onClick={onClose}
         />
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          className="relative max-h-[85%] w-full overflow-y-auto rounded-t-2xl border-t border-neutral-200 bg-white px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4 shadow-lg"
+          className="sheet-panel relative max-h-[90%] w-full overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3"
         >
+          <div className="sheet-grab" />
           <div className="mb-3 flex items-center justify-between">
-            <h2 id={titleId} className="text-base font-semibold text-[#0F0A2E]">
-              Restock Items
+            <h2 id={titleId} className="text-[20px] font-extrabold tracking-tight text-[#0F0A2E]">
+              Add new stock
             </h2>
             <button
               ref={closeRef}
               type="button"
               onClick={onClose}
-              aria-label="Close restock form"
-              className="inline-flex size-11 items-center justify-center rounded-full text-[#6B6898]"
+              aria-label="Close"
+              className="icon-btn bg-[#F1F0F8] text-[#3B3670]"
             >
               <X className="size-5" aria-hidden />
             </button>
           </div>
           {productHint ? (
-            <p className="mb-3 text-sm text-amber-800">
-              Couldn&apos;t match &ldquo;{productHint}&rdquo;. Pick a product.
+            <p className="mb-3 rounded-xl bg-[#FEF0C7] px-3 py-2 text-[14px] font-semibold text-[#7A4300]">
+              We could not match &ldquo;{productHint}&rdquo;. Please pick the product.
             </p>
           ) : null}
           <form onSubmit={onSubmit} className="flex flex-col gap-3">
-            <label className="block text-xs font-medium text-[#6B6898]">
+            <label className="label">
               Product
               <select
                 required
@@ -157,42 +157,42 @@ export function RestockSheet({
                 onChange={(e) => setSkuId(e.target.value)}
                 className={`${fieldClass} mt-1`}
               >
-                <option value="">Select product</option>
+                <option value="">Choose a product</option>
                 {skus.map((sku) => (
                   <option key={sku.sku_id} value={sku.sku_id}>
-                    {sku.display_name} · qty {sku.stock_qty}
-                    {sku.product_type === "maker" ? " · MADE" : ""}
+                    {sku.display_name} · {sku.stock_qty} left
+                    {sku.product_type === "maker" ? " · Made by me" : ""}
                   </option>
                 ))}
               </select>
             </label>
             {isMaker ? (
               <>
-                <label className="block text-xs font-medium text-[#6B6898]">
-                  Batch cost (₦)
+                <label className="label">
+                  What the batch cost you (₦)
                   <input
                     required
                     inputMode="decimal"
                     value={batchCost}
                     onChange={(e) => setBatchCost(e.target.value)}
                     className={`${fieldClass} mt-1`}
-                    placeholder="Total cost to make this batch"
+                    placeholder="Total spent on this batch"
                   />
                 </label>
-                <label className="block text-xs font-medium text-[#6B6898]">
-                  Units per batch
+                <label className="label">
+                  Items in this batch
                   <input
                     required
                     inputMode="numeric"
                     value={batchQty}
                     onChange={(e) => setBatchQty(e.target.value)}
                     className={`${fieldClass} mt-1`}
-                    placeholder="How many units this batch makes"
+                    placeholder="How many this batch makes"
                   />
                 </label>
                 {batchCost && batchQty && Number(batchQty) > 0 ? (
-                  <p className="text-xs text-[#6B6898]">
-                    Unit cost ={" "}
+                  <p className="hint">
+                    Each one cost you{" "}
                     <span className="font-semibold text-[#0F0A2E]">
                       ₦{(Number(batchCost) / Number(batchQty)).toFixed(2)}
                     </span>
@@ -201,8 +201,8 @@ export function RestockSheet({
               </>
             ) : (
               <>
-                <label className="block text-xs font-medium text-[#6B6898]">
-                  Qty
+                <label className="label">
+                  How many came in?
                   <input
                     required
                     inputMode="numeric"
@@ -211,29 +211,29 @@ export function RestockSheet({
                     className={`${fieldClass} mt-1`}
                   />
                 </label>
-                <label className="block text-xs font-medium text-[#6B6898]">
-                  Total (₦)
+                <label className="label">
+                  Total you paid (₦)
                   <input
                     inputMode="decimal"
                     value={total}
                     onChange={(e) => setTotal(e.target.value)}
                     className={`${fieldClass} mt-1`}
-                    placeholder="0 if unknown"
+                    placeholder="Put 0 if you are not sure"
                   />
                 </label>
               </>
             )}
             {error ? (
-              <p className="text-sm text-red-700" role="alert">
+              <p className="rounded-xl bg-red-50 px-3 py-2 text-[14px] font-semibold text-red-800" role="alert">
                 {error}
               </p>
             ) : null}
             <button
               type="submit"
               disabled={busy || skus.length === 0}
-              className="mt-1 flex min-h-[54px] items-center justify-center rounded-[12px] bg-[#17104A] px-3 text-sm font-semibold text-white disabled:opacity-50"
+              className="btn btn-primary mt-1 min-h-[54px]"
             >
-              {busy ? "Saving…" : "Save restock"}
+              {busy ? "Saving…" : "Save new stock"}
             </button>
           </form>
         </div>

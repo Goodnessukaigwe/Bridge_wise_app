@@ -1,8 +1,11 @@
 "use client";
 
-import { ArrowLeft, CheckCircle2, Inbox, Lock } from "lucide-react";
+import { ArrowLeft, ChevronRight, Lock, PiggyBank, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ProductGrowth } from "@/components/finance/ProductGrowth";
+import { CountUp } from "@/components/ui/CountUp";
+import { EmptyState, PurseArt } from "@/components/ui/Illustrations";
 import { todayDateKey } from "@/lib/db/dexie";
 import { useDailyLedger, useDailyStatement, useOrders } from "@/lib/db/hooks";
 import type { DailyStatement, LedgerEntry, Order } from "@/types/bridgewise";
@@ -50,13 +53,20 @@ function SalesDrillDown({
 
   return (
     <div>
-      <p className="mb-4 text-sm text-[#6B6898]">
+      <p className="mb-4 text-[15px] font-medium text-[#55517F]">
         {sales.length === 0
-          ? "No confirmed sales yet today."
-          : `${sales.length} confirmed order${sales.length !== 1 ? "s" : ""} · ${formatNaira(total)} total`}
+          ? "No sales yet today."
+          : `${sales.length} order${sales.length !== 1 ? "s" : ""} sold · ${formatNaira(total)}`}
       </p>
+      {sales.length === 0 ? (
+        <EmptyState
+          art={<PurseArt className="w-full" />}
+          title="Nothing sold yet today"
+          body="When you mark an order as sold, it shows up here."
+        />
+      ) : null}
       <ul className="flex flex-col gap-3">
-        {sales.map((entry) => {
+        {sales.map((entry, i) => {
           const order = entry.ref_order_id
             ? orderMap.get(entry.ref_order_id)
             : undefined;
@@ -64,28 +74,29 @@ function SalesDrillDown({
           return (
             <li
               key={entry.txn_id}
-              className="rounded-[14px] border border-[#E8E6F0] bg-white p-4 shadow-[0_1px_4px_rgba(15,10,46,0.08)]"
+              className="card anim-card p-4"
+              style={{ ["--i" as string]: Math.min(i, 8) }}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="font-semibold text-[#0F0A2E]">
+                  <p className="text-[16px] font-bold text-[#0F0A2E]">
                     {order?.customer_name || "Customer"}
                   </p>
                   {order?.items.map((item) => (
                     <p
                       key={`${entry.txn_id}-${item.product_id}`}
-                      className="text-xs text-[#6B6898]"
+                      className="text-[13px] text-[#55517F]"
                     >
                       {item.quantity}× {item.product_name}
                     </p>
                   ))}
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="amount font-bold text-[#0F0A2E]">
+                  <p className="amount text-[17px] font-extrabold text-[#17104A]">
                     {formatNaira(entry.gross_amount)}
                   </p>
                   {time ? (
-                    <p className="text-xs text-[#9B97B8]">{time}</p>
+                    <p className="text-[12px] text-[#6B6898]">{time}</p>
                   ) : null}
                 </div>
               </div>
@@ -146,39 +157,42 @@ function CapitalDrillDown({
 
   return (
     <div>
-      <p className="mb-1 text-sm text-[#6B6898]">
-        This money covers your restocking cost. Set it aside before spending.
+      <p className="mb-1 text-[15px] font-medium text-[#55517F]">
+        This is the money you need to buy more stock. Set it aside before you
+        spend anything.
       </p>
-      <p className="mb-4 text-xs text-[#9B97B8]">
-        Breakdown by product sold today
+      <p className="mb-4 text-[13px] text-[#6B6898]">
+        Products sold today
       </p>
       {byProduct.length === 0 ? (
-        <p className="py-8 text-center text-sm text-[#6B6898]">
-          No sales yet today.
-        </p>
+        <EmptyState
+          art={<PurseArt className="w-full" />}
+          title="Nothing to set aside yet"
+          body="Sell something today and we will show what to keep for restocking."
+        />
       ) : (
         <>
           <ul className="flex flex-col gap-2">
             {byProduct.map((p) => (
               <li
                 key={p.name}
-                className="flex items-center justify-between rounded-[12px] border border-[#E8E6F0] bg-white px-4 py-3"
+                className="card flex items-center justify-between px-4 py-3"
               >
                 <div>
-                  <p className="font-medium text-[#0F0A2E]">{p.name}</p>
-                  <p className="text-xs text-[#6B6898]">
-                    {p.qty} sold × {formatNaira(p.unitCost)}
+                  <p className="text-[16px] font-bold text-[#0F0A2E]">{p.name}</p>
+                  <p className="text-[13px] text-[#55517F]">
+                    {p.qty} sold × {formatNaira(p.unitCost)} each
                   </p>
                 </div>
-                <p className="amount font-semibold text-[#0F0A2E]">
+                <p className="amount text-[16px] font-extrabold text-[#0F0A2E]">
                   {formatNaira(p.total)}
                 </p>
               </li>
             ))}
           </ul>
-          <div className="mt-4 flex items-center justify-between rounded-[12px] bg-[#FEF3C7] px-4 py-3">
-            <p className="font-semibold text-[#92400E]">Total locked</p>
-            <p className="amount font-bold text-[#92400E]">
+          <div className="mt-4 flex items-center justify-between rounded-2xl bg-[#FEF0C7] px-4 py-3.5">
+            <p className="font-bold text-[#7A4300]">Set aside for restocking</p>
+            <p className="amount text-[18px] font-extrabold text-[#7A4300]">
               {formatNaira(totalCapital)}
             </p>
           </div>
@@ -205,37 +219,37 @@ function ProfitDrillDown({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between rounded-[12px] border border-[#E8E6F0] bg-white px-4 py-3">
-        <p className="text-sm text-[#6B6898]">Total sales</p>
-        <p className="amount font-semibold text-[#0F0A2E]">
+      <div className="card flex items-center justify-between px-4 py-3.5">
+        <p className="text-[15px] font-medium text-[#55517F]">Money from sales</p>
+        <p className="amount font-bold text-[#0F0A2E]">
           {formatNaira(sales)}
         </p>
       </div>
-      <div className="flex items-center justify-between rounded-[12px] border border-[#E8E6F0] bg-white px-4 py-3">
-        <p className="text-sm text-[#6B6898]">— Restock capital</p>
-        <p className="amount font-semibold text-[#F59E0B]">
+      <div className="card flex items-center justify-between px-4 py-3.5">
+        <p className="text-[15px] font-medium text-[#55517F]">Money for restocking</p>
+        <p className="amount font-bold text-[#B45309]">
           −{formatNaira(capital)}
         </p>
       </div>
       {expenses.length > 0 ? (
         <>
-          <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[#6B6898]">
-            Expenses
+          <p className="mt-2 text-[13px] font-bold text-[#55517F]">
+            Money you spent
           </p>
           {expenses.map((e) => (
             <div
               key={e.txn_id}
-              className="flex items-center justify-between rounded-[12px] border border-[#E8E6F0] bg-white px-4 py-3"
+              className="card flex items-center justify-between px-4 py-3.5"
             >
               <div>
-                <p className="text-sm text-[#0F0A2E]">
-                  {e.category || "Expense"}
+                <p className="text-[15px] font-semibold text-[#0F0A2E]">
+                  {e.category || "Spending"}
                 </p>
                 {e.note ? (
-                  <p className="text-xs text-[#6B6898]">{e.note}</p>
+                  <p className="text-[13px] text-[#55517F]">{e.note}</p>
                 ) : null}
               </div>
-              <p className="amount font-semibold text-[#6B6898]">
+              <p className="amount font-bold text-[#55517F]">
                 −{formatNaira(e.gross_amount)}
               </p>
             </div>
@@ -243,15 +257,15 @@ function ProfitDrillDown({
         </>
       ) : null}
       <div
-        className={`mt-2 flex items-center justify-between rounded-[12px] border-2 px-4 py-4 ${profit >= 0 ? "border-[#10B981] bg-[#ECFDF5]" : "border-red-400 bg-red-50"}`}
+        className={`mt-2 flex items-center justify-between rounded-2xl border-2 px-4 py-4 ${profit >= 0 ? "border-[#10B981] bg-[#ECFDF5]" : "border-red-400 bg-red-50"}`}
       >
         <p
           className={`font-semibold ${profit >= 0 ? "text-[#065F46]" : "text-red-700"}`}
         >
-          Net profit
+          Your profit
         </p>
         <p
-          className={`amount text-[22px] font-bold ${profit >= 0 ? "text-[#10B981]" : "text-red-600"}`}
+          className={`amount text-[24px] font-extrabold ${profit >= 0 ? "text-[#047857]" : "text-red-600"}`}
         >
           {profit < 0 ? "−" : ""}
           {formatNaira(Math.abs(profit))}
@@ -266,15 +280,15 @@ type Bucket = {
   label: string;
   subtitle: string | null;
   subtitleClass: string | null;
-  amount: string;
+  value: number;
   Icon: LucideIcon;
-  borderClass: string;
+  tone: "hero" | "amber" | "green";
 };
 
 const DRILL_TITLES: Record<NonNullable<DrillView>, string> = {
-  sales: "Today's Sales",
-  capital: "Protected Capital",
-  profit: "Today's P&L",
+  sales: "Money from sales today",
+  capital: "Money for restocking",
+  profit: "Your profit today",
 };
 
 export function PocketStatement() {
@@ -287,10 +301,8 @@ export function PocketStatement() {
   if (statement === undefined || ledger === undefined || orders === undefined) {
     return (
       <section className="flex min-h-full flex-col items-center justify-center px-6 py-10 text-center">
-        <h1 className="text-[22px] font-bold text-[#0F0A2E]">
-          Pocket Statement
-        </h1>
-        <p className="mt-3 text-sm text-[#6B6898]">Loading statement…</p>
+        <h1 className="page-title">Pocket Statement</h1>
+        <p className="mt-3 text-[15px] text-[#55517F]">Loading your money…</p>
       </section>
     );
   }
@@ -305,106 +317,150 @@ export function PocketStatement() {
   const buckets: Bucket[] = [
     {
       key: "sales",
-      label: "Total Sales Collected",
+      label: "Money from sales",
       subtitle: null,
       subtitleClass: null,
-      amount: formatNaira(sales),
-      Icon: Inbox,
-      borderClass: "border-l-[#17104A]",
+      value: sales,
+      Icon: Wallet,
+      tone: "hero",
     },
     {
       key: "capital",
-      label: "Protected Restock Capital",
-      subtitle: "Do Not Spend",
-      subtitleClass: "text-[#F59E0B]",
-      amount: formatNaira(capital),
+      label: "Money for restocking",
+      subtitle: "Do not spend",
+      subtitleClass: "text-[#9A5B00]",
+      value: capital,
       Icon: Lock,
-      borderClass: "border-l-[#F59E0B]",
+      tone: "amber",
     },
     {
       key: "profit",
-      label: "Safe Net Profit",
-      subtitle: "Yours",
-      subtitleClass: "text-[#10B981]",
-      amount: formatNaira(profit),
-      Icon: CheckCircle2,
-      borderClass: "border-l-[#10B981]",
+      label: "Your profit",
+      subtitle: "Yours to keep",
+      subtitleClass: "text-[#047857]",
+      value: profit,
+      Icon: PiggyBank,
+      tone: "green",
     },
   ];
 
+  const TONES = {
+    hero: {
+      card: "bg-gradient-to-br from-[#2A1F7A] to-[#17104A] text-white border-transparent",
+      icon: "bg-white/15 text-white",
+      label: "text-white/85",
+      amount: "text-white",
+      chev: "text-white/70",
+    },
+    amber: {
+      card: "bg-gradient-to-br from-[#FFF8E6] to-[#FFEFC4] border-[#F7DA95]",
+      icon: "bg-[#F59E0B]/25 text-[#9A5B00]",
+      label: "text-[#6B4300]",
+      amount: "text-[#0F0A2E]",
+      chev: "text-[#9A5B00]",
+    },
+    green: {
+      card: "bg-gradient-to-br from-[#ECFDF5] to-[#D3F5E5] border-[#A7E8C9]",
+      icon: "bg-[#10B981]/20 text-[#047857]",
+      label: "text-[#065F46]",
+      amount: "text-[#0F0A2E]",
+      chev: "text-[#047857]",
+    },
+  } as const;
+
   return (
-    <section className="flex min-h-full flex-col px-4 py-6">
-      <h1 className="text-center text-[22px] font-bold text-[#0F0A2E]">
-        Pocket Statement
-      </h1>
-      <p className="mt-1 text-center text-[14px] text-[#6B6898]">
+    <section className="flex min-h-full flex-col px-4 pb-28 pt-5">
+      <h1 className="page-title">Pocket Statement</h1>
+      <p className="page-sub mt-0.5">
         {formatHumanDate(today)}
       </p>
-      <p className="mt-2 text-center text-sm text-[#6B6898]">
+      <p className="mt-1 text-[14px] font-medium text-[#55517F]">
         {emptyDay
-          ? "Nothing confirmed yet today."
+          ? "No sales marked yet today."
           : sales === 0 && expenses > 0
-            ? "Today's expenses."
-            : "Today's confirmed sales."}
+            ? "What you spent today."
+            : "Your sales today."}
       </p>
-      <ul className="mt-6 flex flex-col gap-3">
+      <ul className="mt-4 flex flex-col gap-3">
         {buckets.map(
-          ({ key, label, subtitle, subtitleClass, amount, Icon, borderClass }) => (
-            <li key={label}>
-              <button
-                type="button"
-                onClick={() => setActiveView(key)}
-                className={`flex w-full items-start gap-3 rounded-[14px] border border-[#E8E6F0] border-l-4 bg-white p-4 shadow-[0_1px_4px_rgba(15,10,46,0.08)] text-left active:bg-[#F4F3FF] transition-colors ${borderClass}`}
+          ({ key, label, subtitle, subtitleClass, value, Icon, tone }, i) => {
+            const t = TONES[tone];
+            return (
+              <li
+                key={label}
+                className="anim-card"
+                style={{ ["--i" as string]: i }}
               >
-                <Icon
-                  className="mt-0.5 size-5 shrink-0 text-[#6B6898]"
-                  strokeWidth={1.8}
-                  aria-hidden
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium uppercase tracking-[0.5px] text-[#6B6898]">
-                    {label}
-                  </p>
-                  {subtitle ? (
-                    <p
-                      className={`mt-0.5 text-xs font-semibold tracking-wide ${subtitleClass}`}
+                <button
+                  type="button"
+                  onClick={() => setActiveView(key)}
+                  className={`flex min-h-[88px] w-full items-center gap-3.5 rounded-[22px] border p-4 text-left shadow-[0_10px_24px_-14px_rgba(23,16,74,0.5)] transition-transform active:scale-[0.985] ${t.card}`}
+                >
+                  <span
+                    className={`flex size-12 shrink-0 items-center justify-center rounded-2xl ${t.icon}`}
+                  >
+                    <Icon className="size-6" strokeWidth={2} aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className={`block text-[14px] font-bold ${t.label}`}>
+                      {label}
+                    </span>
+                    {subtitle ? (
+                      <span
+                        className={`block text-[12px] font-extrabold ${subtitleClass}`}
+                      >
+                        {subtitle}
+                      </span>
+                    ) : null}
+                    <span
+                      className={`mt-0.5 block text-[30px] font-extrabold leading-tight ${t.amount}`}
                     >
-                      {subtitle}
-                    </p>
-                  ) : null}
-                  <p className="amount mt-1 text-[28px] font-bold leading-tight text-[#0F0A2E]">
-                    {amount}
-                  </p>
-                </div>
-                <span className="mt-1 text-[#9B97B8]" aria-hidden>›</span>
-              </button>
-            </li>
-          ),
+                      {value < 0 ? "−" : ""}
+                      <CountUp
+                        value={Math.abs(value)}
+                        format={formatNaira}
+                      />
+                    </span>
+                  </span>
+                  <ChevronRight
+                    className={`size-6 shrink-0 ${t.chev}`}
+                    aria-hidden
+                  />
+                </button>
+              </li>
+            );
+          },
         )}
       </ul>
       {expenses > 0 ? (
-        <p className="mt-4 text-center text-sm text-[#6B6898]">
-          After {formatNaira(expenses)} expenses
+        <p className="mt-3 text-center text-[14px] font-medium text-[#55517F]">
+          After {formatNaira(expenses)} you spent
         </p>
       ) : null}
 
+      <ProductGrowth />
+
       {/* Drill-down slide panel (fixed overlay) */}
       <div
-        className="fixed inset-0 z-20 flex justify-center bg-[#F4F3FF] transition-transform duration-[250ms] ease-out"
-        style={{ transform: activeView ? "translateX(0)" : "translateX(100%)" }}
+        className="anim-drill app-surface absolute inset-0 z-40 flex justify-center"
+        style={{
+          transform: activeView ? "translateX(0)" : "translateX(100%)",
+          visibility: activeView ? "visible" : "hidden",
+          transitionProperty: activeView ? "transform" : "transform, visibility",
+        }}
         aria-hidden={!activeView}
       >
         <div className="flex h-full w-full max-w-md flex-col">
-          <div className="flex shrink-0 items-center gap-2 px-4 pb-3 pt-6">
+          <div className="flex shrink-0 items-center gap-2 px-4 pb-3 pt-5">
             <button
               type="button"
               onClick={() => setActiveView(null)}
-              className="inline-flex size-9 items-center justify-center rounded-full text-[#6B6898] active:bg-[#E8E6F0]"
-              aria-label="Back to statement"
+              className="icon-btn bg-white text-[#17104A] shadow-sm"
+              aria-label="Back to Pocket Statement"
             >
               <ArrowLeft className="size-5" />
             </button>
-            <h2 className="text-[18px] font-bold text-[#0F0A2E]">
+            <h2 className="text-[20px] font-extrabold tracking-tight text-[#0F0A2E]">
               {activeView ? DRILL_TITLES[activeView] : ""}
             </h2>
           </div>

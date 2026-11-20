@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
+import { PackagePlus, Plus, X } from "lucide-react";
 import {
   useEffect,
   useId,
@@ -11,10 +11,9 @@ import {
 } from "react";
 import {
   LOW_STOCK_THRESHOLD,
-  skuId,
-  toIdToken,
   variantFromSkuId,
 } from "@/lib/db/dexie";
+import { ShelfArt, EmptyState } from "@/components/ui/Illustrations";
 import { RestockSheet } from "@/components/inventory/RestockSheet";
 import { useOrders, useSkus } from "@/lib/db/hooks";
 import {
@@ -29,15 +28,15 @@ import type { Sku, StockColor } from "@/types/bridgewise";
 const BADGE: Record<StockColor, { label: string; className: string }> = {
   GREEN: {
     label: "In stock",
-    className: "bg-[#DCFCE7] text-[#166534]",
+    className: "pill-green",
   },
   YELLOW: {
     label: "Running low",
-    className: "bg-[#FEF3C7] text-[#92400E]",
+    className: "pill-orange",
   },
   RED: {
     label: "Out of stock",
-    className: "bg-[#FEE2E2] text-[#991B1B]",
+    className: "pill-red",
   },
 };
 
@@ -122,65 +121,74 @@ function formFromSku(sku: Sku): SkuFormState {
 function SkuCard({
   sku,
   restockPace,
+  index,
   onEdit,
 }: {
   sku: Sku;
   restockPace: number;
+  index: number;
   onEdit: (sku: Sku) => void;
 }) {
   const color = colorOf(sku);
   const badge = BADGE[color];
 
+  const accent =
+    color === "GREEN"
+      ? "bg-[#10B981]"
+      : color === "YELLOW"
+        ? "bg-[#F97316]"
+        : "bg-[#EF4444]";
+  const typeLabel = variantFromSkuId(sku.sku_id);
+
   return (
-    <li>
+    <li className="anim-card" style={{ ["--i" as string]: Math.min(index, 8) }}>
       <button
         type="button"
         onClick={() => onEdit(sku)}
-        className="w-full rounded-[14px] border border-[#E8E6F0] bg-white px-4 py-4 text-left shadow-[0_1px_4px_rgba(15,10,46,0.08)]"
+        className="card relative w-full overflow-hidden py-4 pl-5 pr-4 text-left transition-transform active:scale-[0.985]"
       >
+        <span aria-hidden className={`absolute inset-y-0 left-0 w-1.5 ${accent}`} />
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <p className="font-semibold text-neutral-900">{sku.display_name}</p>
+              <p className="text-[17px] font-bold leading-snug text-[#0F0A2E]">{sku.display_name}</p>
               {sku.product_type === "maker" ? (
-                <span className="shrink-0 rounded-full border border-[#17104A] px-2 py-0.5 text-[10px] font-semibold text-[#17104A]">
-                  MADE
-                </span>
+                <span className="pill pill-indigo shrink-0">Made by me</span>
               ) : null}
             </div>
-            <p className="mt-0.5 truncate font-mono text-xs text-neutral-500">
-              {sku.sku_id}
+            <p className="mt-0.5 truncate text-[13px] text-[#55517F]">
+              Type: {typeLabel}
             </p>
           </div>
           <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.className}`}
+            className={`pill shrink-0 ${badge.className}`}
           >
             {badge.label}
           </span>
         </div>
-        <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
+        <dl className="mt-3 grid grid-cols-3 gap-2 rounded-2xl bg-[#F4F3FF] px-3 py-2.5 text-sm">
           <div>
-            <dt className="text-xs text-neutral-500">Qty</dt>
-            <dd className="font-medium tabular-nums text-neutral-900">
+            <dt className="text-xs font-semibold text-[#55517F]">In stock</dt>
+            <dd className="text-[17px] font-bold tabular-nums text-[#0F0A2E]">
               {sku.stock_qty}
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-neutral-500">Cost</dt>
-            <dd className="font-medium tabular-nums text-neutral-900">
+            <dt className="text-xs font-semibold text-[#55517F]">Cost you</dt>
+            <dd className="text-[15px] font-bold tabular-nums text-[#0F0A2E]">
               {formatNaira(sku.unit_cost_price)}
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-neutral-500">Sell</dt>
-            <dd className="font-medium tabular-nums text-neutral-900">
+            <dt className="text-xs font-semibold text-[#55517F]">You sell at</dt>
+            <dd className="text-[15px] font-bold tabular-nums text-[#0F0A2E]">
               {formatNaira(sku.unit_selling_price)}
             </dd>
           </div>
         </dl>
         {color === "YELLOW" && restockPace >= 1 ? (
-          <p className="mt-3 text-sm font-medium text-amber-900">
-            Restock ~{restockPace} (7-day pace)
+          <p className="mt-3 text-[14px] font-semibold text-[#9A3412]">
+            Add about {restockPace} more. This is how fast it sold this week.
           </p>
         ) : null}
       </button>
@@ -212,12 +220,6 @@ function SkuFormSheet({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-
-  const previewId = creating
-    ? toIdToken(form.name) && toIdToken(form.variant)
-      ? skuId(form.name, form.variant)
-      : "—"
-    : sku.sku_id;
 
   function setField<K extends keyof SkuFormState>(key: K, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -264,47 +266,47 @@ function SkuFormSheet({
       }
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save product");
+      setError(err instanceof Error ? err.message : "Could not save this product. Please try again.");
     } finally {
       setBusy(false);
     }
   }
 
-  const fieldClass =
-    "min-h-11 w-full rounded-[10px] border border-[#E8E6F0] bg-white px-3 text-sm text-[#0F0A2E] outline-none focus:border-[#17104A]";
+  const fieldClass = "field";
 
   return (
     <div className="fixed inset-0 z-50 flex justify-center">
-      <div className="relative flex h-full w-full max-w-md items-end bg-neutral-900/40">
+      <div className="sheet-backdrop relative flex h-full w-full max-w-md items-end">
         <button
           type="button"
           className="absolute inset-0"
-          aria-label="Dismiss SKU form"
+          aria-label="Close"
           onClick={onClose}
         />
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          className="relative max-h-[85%] w-full overflow-y-auto rounded-t-2xl border-t border-neutral-200 bg-white px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4 shadow-lg"
+          className="sheet-panel relative max-h-[90%] w-full overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3"
         >
+          <div className="sheet-grab" />
           <div className="mb-3 flex items-center justify-between">
-            <h2 id={titleId} className="text-base font-semibold text-[#0F0A2E]">
-              {creating ? "Add Product" : "Edit Product"}
+            <h2 id={titleId} className="text-[20px] font-extrabold tracking-tight text-[#0F0A2E]">
+              {creating ? "Add a product" : "Edit product"}
             </h2>
             <button
               ref={closeRef}
               type="button"
               onClick={onClose}
-              aria-label="Close SKU form"
-              className="inline-flex size-11 items-center justify-center rounded-full text-neutral-700"
+              aria-label="Close"
+              className="icon-btn bg-[#F1F0F8] text-[#3B3670]"
             >
               <X className="size-5" aria-hidden />
             </button>
           </div>
           <form onSubmit={onSubmit} className="flex flex-col gap-3">
-          <label className="block text-xs font-medium text-[#6B6898]">
-            Name
+          <label className="label">
+            Product name
             <input
               required
               value={form.name}
@@ -313,35 +315,32 @@ function SkuFormSheet({
               autoComplete="off"
             />
           </label>
-          <label className="block text-xs font-medium text-[#6B6898]">
-            Variant
+          <label className="label">
+            Type (for example size or colour)
             <input
               required
               value={form.variant}
               onChange={(e) => setField("variant", e.target.value)}
               disabled={!creating}
-              className={`${fieldClass} mt-1 disabled:bg-neutral-100`}
+              className={`${fieldClass} mt-1 `}
               autoComplete="off"
-              placeholder="Size42, Std, 8in"
+              placeholder="Size 42, Red, 8 inch"
             />
           </label>
-          <p className="font-mono text-[11px] text-[#9B97B8]">
-            ID {previewId}
-          </p>
 
           {/* Maker / reseller toggle */}
-          <div className="rounded-[10px] border border-[#E8E6F0] p-1 grid grid-cols-2 gap-1">
+          <div className="grid grid-cols-2 gap-1 rounded-2xl bg-[#F1F0F8] p-1">
             <button
               type="button"
               onClick={() => setField("productMode", "reseller")}
-              className={`rounded-[8px] py-2 text-xs font-semibold transition-colors ${form.productMode === "reseller" ? "bg-[#17104A] text-white" : "text-[#6B6898]"}`}
+              className={`min-h-11 rounded-xl py-2 text-[14px] font-bold transition-colors ${form.productMode === "reseller" ? "bg-[#17104A] text-white shadow-sm" : "text-[#55517F]"}`}
             >
               I buy &amp; resell
             </button>
             <button
               type="button"
               onClick={() => setField("productMode", "maker")}
-              className={`rounded-[8px] py-2 text-xs font-semibold transition-colors ${form.productMode === "maker" ? "bg-[#17104A] text-white" : "text-[#6B6898]"}`}
+              className={`min-h-11 rounded-xl py-2 text-[14px] font-bold transition-colors ${form.productMode === "maker" ? "bg-[#17104A] text-white shadow-sm" : "text-[#55517F]"}`}
             >
               I make this
             </button>
@@ -350,19 +349,19 @@ function SkuFormSheet({
           {isMaker ? (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <label className="block text-xs font-medium text-[#6B6898]">
-                  Batch cost (₦)
+                <label className="label">
+                  What the batch cost you (₦)
                   <input
                     required
                     inputMode="decimal"
                     value={form.batchCost}
                     onChange={(e) => setField("batchCost", e.target.value)}
                     className={`${fieldClass} mt-1`}
-                    placeholder="Total to make batch"
+                    placeholder="Total spent"
                   />
                 </label>
-                <label className="block text-xs font-medium text-[#6B6898]">
-                  Units per batch
+                <label className="label">
+                  Items in this batch
                   <input
                     required
                     inputMode="numeric"
@@ -374,14 +373,14 @@ function SkuFormSheet({
                 </label>
               </div>
               {batchQtyNum > 0 && batchCostNum > 0 ? (
-                <p className="text-xs text-[#6B6898]">
-                  Unit cost ={" "}
+                <p className="hint">
+                  Each one costs you{" "}
                   <span className="font-semibold text-[#0F0A2E]">
                     ₦{derivedUnitCost.toFixed(2)}
                   </span>
                   {profitPreview != null && sellNum > 0 ? (
                     <>
-                      {" "}· profit ={" "}
+                      {" "}· you make{" "}
                       <span className={`font-semibold ${profitPreview >= 0 ? "text-[#10B981]" : "text-red-600"}`}>
                         ₦{profitPreview.toFixed(2)}
                       </span>
@@ -391,8 +390,8 @@ function SkuFormSheet({
               ) : null}
             </>
           ) : (
-            <label className="block text-xs font-medium text-[#6B6898]">
-              Cost (₦)
+            <label className="label">
+              What it cost you (per item) (₦)
               <input
                 required
                 inputMode="decimal"
@@ -403,8 +402,8 @@ function SkuFormSheet({
             </label>
           )}
 
-          <label className="block text-xs font-medium text-[#6B6898]">
-            Sell price (₦)
+          <label className="label">
+            Your selling price (₦)
             <input
               required
               inputMode="decimal"
@@ -413,8 +412,8 @@ function SkuFormSheet({
               className={`${fieldClass} mt-1`}
             />
           </label>
-          <label className="block text-xs font-medium text-[#6B6898]">
-            Low-stock threshold
+          <label className="label">
+            Warn me when stock gets to
             <input
               required
               inputMode="numeric"
@@ -424,8 +423,8 @@ function SkuFormSheet({
             />
           </label>
           {creating ? (
-            <label className="block text-xs font-medium text-[#6B6898]">
-              Initial quantity
+            <label className="label">
+              How many do you have now?
               <input
                 required
                 inputMode="numeric"
@@ -435,21 +434,21 @@ function SkuFormSheet({
               />
             </label>
           ) : (
-            <p className="text-sm text-[#6B6898]">
-              Qty {sku.stock_qty} — changes only via Confirm, return, or restock.
+            <p className="hint">
+              You have {sku.stock_qty} in stock. This number changes when you mark a sale, log a return or add new stock.
             </p>
           )}
           {error ? (
-            <p className="text-sm text-red-700" role="alert">
+            <p className="rounded-xl bg-red-50 px-3 py-2 text-[14px] font-semibold text-red-800" role="alert">
               {error}
             </p>
           ) : null}
           <button
             type="submit"
             disabled={busy}
-            className="mt-1 h-[54px] w-full rounded-[10px] bg-[#17104A] text-[15px] font-semibold text-white disabled:opacity-50"
+            className="btn btn-primary mt-1 min-h-[54px] w-full"
           >
-            {busy ? "Saving…" : creating ? "Save Product" : "Save changes"}
+            {busy ? "Saving…" : creating ? "Save product" : "Save changes"}
           </button>
           </form>
         </div>
@@ -480,50 +479,48 @@ export function StockRoom() {
   if (skus === undefined) {
     return (
       <section className="flex min-h-full flex-col items-center justify-center px-6 py-10 text-center">
-        <h1 className="text-lg font-semibold text-neutral-900">Stock Room</h1>
-        <p className="mt-3 text-sm text-neutral-600">Loading stock…</p>
+        <h1 className="page-title">Stock Room</h1>
+        <p className="mt-3 text-[15px] text-[#55517F]">Loading your stock…</p>
       </section>
     );
   }
 
   return (
     <section className="flex min-h-full flex-col px-4 py-6">
-      <h1 className="text-center text-[22px] font-bold text-[#0F0A2E]">
-        Stock Room
-      </h1>
-      <div className="mt-4 flex flex-col gap-2">
+      <h1 className="page-title">Stock Room</h1>
+      <p className="page-sub mt-0.5">What you have on your shelf</p>
+      <div className="mt-4 grid grid-cols-2 gap-2.5">
         <button
           type="button"
           onClick={() => setSheet("new")}
-          className="flex h-[54px] w-full items-center justify-center gap-1.5 rounded-[10px] bg-[#17104A] text-[15px] font-semibold text-white"
+          className="btn btn-primary min-h-[54px] !px-3 whitespace-nowrap"
         >
-          <Plus className="size-4" strokeWidth={2.5} aria-hidden />
-          Add Product
+          <Plus className="size-5" strokeWidth={2.5} aria-hidden />
+          Add product
         </button>
         <button
           type="button"
           onClick={() => setRestockOpen(true)}
           disabled={sorted.length === 0}
-          className="h-[54px] w-full rounded-[10px] border-[1.5px] border-[#17104A] bg-white text-[15px] font-semibold text-[#17104A] disabled:opacity-50"
+          className="btn btn-secondary min-h-[54px] !px-3 whitespace-nowrap"
         >
-          Restock Items
+          <PackagePlus className="size-5" aria-hidden />
+          Add new stock
         </button>
       </div>
 
       {sorted.length === 0 ? (
-        <div className="mt-10 flex flex-col items-center text-center">
-          <p className="text-[18px] font-semibold text-[#0F0A2E]">
-            No products yet
-          </p>
-          <p className="mt-2 max-w-xs text-sm leading-relaxed text-[#6B6898]">
-            Add a product to start tracking stock.
-          </p>
-        </div>
+        <EmptyState
+          art={<ShelfArt className="w-full" />}
+          title="Your shelf is empty"
+          body="Add your first product and we will keep count of your stock for you."
+        />
       ) : (
         <ul className="mt-6 space-y-3">
-          {sorted.map((sku) => (
+          {sorted.map((sku, index) => (
             <SkuCard
               key={sku.sku_id}
+              index={index}
               sku={sku}
               restockPace={paceBySku.get(sku.sku_id) ?? 0}
               onEdit={setSheet}

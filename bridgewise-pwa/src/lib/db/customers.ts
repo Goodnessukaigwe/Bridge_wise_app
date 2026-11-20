@@ -1,5 +1,6 @@
 import { isWalkInName } from "@/lib/ai/identity";
 import { customerId, db, toIdToken } from "@/lib/db/dexie";
+import { normalisePhone } from "@/lib/whatsapp";
 import type { Customer } from "@/types/bridgewise";
 
 export type UpsertCustomerInput = {
@@ -110,4 +111,28 @@ export async function attachCustomerToWalkInOrder(
 
     return { ok: true, outcome: "attached", order_id: order.order_id };
   });
+}
+
+/**
+ * Saves (or clears) a customer's WhatsApp number. Writes the customers store
+ * only: never stock, the ledger or order status. An invalid number is treated
+ * as missing (returns "invalid") and nothing is blocked.
+ */
+export async function setCustomerPhone(
+  name: string,
+  rawPhone: string,
+): Promise<"saved" | "cleared" | "invalid" | "no_customer"> {
+  if (isWalkInName(name)) return "no_customer";
+  const trimmed = rawPhone.trim();
+  const phone = trimmed ? normalisePhone(trimmed) : null;
+  if (trimmed && !phone) return "invalid";
+  const existing =
+    (await db.customers.get(customerId(name))) ??
+    (await upsertCustomer({ name }));
+  if (!existing) return "no_customer";
+  const next: Customer = { ...existing };
+  if (phone) next.phone = phone;
+  else delete next.phone;
+  await db.customers.put(next);
+  return phone ? "saved" : "cleared";
 }

@@ -9,23 +9,276 @@
   --bg: #F4F3FF;
   --surface: #FFFFFF;
   --text-primary: #0F0A2E;
-  --text-secondary: #6B6898;
-  --border: #E8E6F0;
-  --font-base: system-ui, -apple-system, BlinkMacSystemFont, 'Roboto', 'Segoe UI', sans-serif;
+  --text-secondary: #55517F;
+  --border: #E6E3F5;
+  --font-base: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont, "Roboto", "Segoe UI", sans-serif;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  background: var(--bg);
+  background: #E4E1F5;
   color: var(--text-primary);
   font-family: var(--font-base);
   -webkit-font-smoothing: antialiased;
+  line-height: 1.45;
+}
+
+button,
+select,
+input,
+textarea {
+  font-family: inherit;
 }
 
 .amount {
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
+/* ---------- Layout surfaces ---------- */
+.app-surface {
+  background:
+    radial-gradient(120% 60% at 100% 0%, rgba(245, 158, 11, 0.07), transparent 60%),
+    radial-gradient(100% 50% at 0% 0%, rgba(23, 16, 74, 0.06), transparent 60%),
+    var(--bg);
+}
+
+.card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 1px 2px rgba(23, 16, 74, 0.05), 0 8px 20px -10px rgba(23, 16, 74, 0.16);
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.page-sub {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 14px;
+  padding: 0 18px;
+  font-size: 15px;
+  font-weight: 700;
+  transition: transform 120ms ease, opacity 120ms ease;
+  touch-action: manipulation;
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.btn:disabled {
+  opacity: 0.5;
+}
+.btn-primary {
+  background: linear-gradient(180deg, #2A1F7A 0%, #17104A 100%);
+  color: #fff;
+  box-shadow: 0 6px 14px -6px rgba(23, 16, 74, 0.6);
+}
+.btn-secondary {
+  background: #fff;
+  color: #17104A;
+  border: 1.5px solid #17104A;
+}
+.btn-quiet {
+  background: #fff;
+  color: #3B3670;
+  border: 1.5px solid #DAD7EE;
+}
+.btn-success {
+  background: linear-gradient(180deg, #14B882 0%, #0B9467 100%);
+  color: #fff;
+  box-shadow: 0 6px 14px -6px rgba(11, 148, 103, 0.7);
+}
+.btn-danger {
+  background: #DC2626;
+  color: #fff;
+}
+.icon-btn {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  transition: transform 120ms ease, opacity 120ms ease;
+  touch-action: manipulation;
+}
+.icon-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+.icon-btn:disabled {
+  opacity: 0.4;
+}
+
+/* ---------- Forms ---------- */
+.field {
+  min-height: 48px;
+  width: 100%;
+  border-radius: 14px;
+  border: 1.5px solid #D6D2EC;
+  background: #fff;
+  padding: 0 14px;
+  font-size: 16px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+textarea.field {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.field:focus {
+  border-color: #17104A;
+  box-shadow: 0 0 0 4px rgba(23, 16, 74, 0.12);
+}
+.field:disabled {
+  background: #F1F0F8;
+  color: #6B6898;
+}
+.label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #3B3670;
+}
+.hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ---------- Pills ---------- */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.pill-amber { background: #FEF0C7; color: #7A4300; }
+.pill-green { background: #D3F5E5; color: #065F46; }
+.pill-red { background: #FEE0E0; color: #991B1B; }
+.pill-orange { background: #FFE6D2; color: #9A3412; }
+.pill-indigo { background: #E6E3FA; color: #17104A; }
+.pill-grey { background: #ECEBF3; color: #44406B; }
+
+/* ---------- Sheets ---------- */
+.sheet-backdrop {
+  background: rgba(15, 10, 46, 0.55);
+  animation: fadeIn 180ms ease-out both;
+}
+.sheet-panel {
+  background: #fff;
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 -12px 40px -8px rgba(15, 10, 46, 0.35);
+  animation: sheetUp 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.sheet-grab {
+  margin: 0 auto 12px;
+  height: 5px;
+  width: 40px;
+  border-radius: 999px;
+  background: #D6D2EC;
+}
+
+/* ---------- Motion ---------- */
 @keyframes tabFadeIn {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes sheetUp {
+  from { opacity: 0.4; transform: translateY(36px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes popIn {
+  0% { opacity: 0; transform: scale(0.4); }
+  60% { opacity: 1; transform: scale(1.12); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes ringOut {
+  from { opacity: 0.55; transform: scale(0.6); }
+  to { opacity: 0; transform: scale(1.7); }
+}
+@keyframes splashLogo {
+  from { opacity: 0; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes splashText {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+.anim-card {
+  animation: cardIn 280ms ease-out both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+.anim-pop { animation: popIn 380ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+.anim-ring { animation: ringOut 700ms ease-out both; }
+.anim-toast { animation: toastIn 200ms ease-out both; }
+.anim-float { animation: floaty 3.2s ease-in-out infinite; }
+.anim-drill { transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+/* Reduced motion: no movement, just short fades. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes tabFadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes sheetUp { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes cardIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes popIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes splashLogo { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes splashText { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes toastIn { from { opacity: 0; } to { opacity: 1; } }
+  .anim-card { animation-delay: 0ms; animation-duration: 150ms; }
+  .anim-ring, .anim-float { animation: none; }
+  .anim-drill { transition-duration: 1ms !important; }
+  .btn:active:not(:disabled),
+  .icon-btn:active:not(:disabled) { transform: none; }
+  .sheet-panel, .sheet-backdrop, .anim-pop, .anim-toast { animation-duration: 150ms; }
+}
+
+@keyframes barGrow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+.anim-bar {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: barGrow 450ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .anim-bar { animation: none; }
 }

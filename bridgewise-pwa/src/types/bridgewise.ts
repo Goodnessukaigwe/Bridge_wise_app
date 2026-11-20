@@ -91,6 +91,8 @@ export interface Customer {
   name: string;
   saved_addresses: string[];
   preferences: string[];
+  /** Optional WhatsApp number, international digits only. Not indexed. */
+  phone?: string;
 }
 
 export interface Order {

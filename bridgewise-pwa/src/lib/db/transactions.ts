@@ -97,10 +97,10 @@ export class ConfirmAbortedError extends Error {
   constructor(reason: CommitAbortReason, sku_id?: string) {
     super(
       reason === "missing_sku"
-        ? `SKU missing: ${sku_id ?? "unknown"}`
+        ? "We could not find that product."
         : reason === "empty_items"
-          ? "Unparsed chat — Confirm disabled until a product is matched."
-          : `Out of stock: ${sku_id ?? "unknown"}`,
+          ? "We could not find a product in this chat yet."
+          : "Not enough in stock.",
     );
     this.name = "ConfirmAbortedError";
     this.reason = reason;
@@ -276,20 +276,20 @@ function assertPositiveInt(value: number, label: string): void {
 export async function createSku(input: CreateSkuInput): Promise<Sku> {
   const name = input.name.trim();
   const variant = input.variant.trim();
-  if (!name) throw new Error("Name is required");
-  if (!variant) throw new Error("Variant is required");
+  if (!name) throw new Error("Please type a product name");
+  if (!variant) throw new Error("Please type the type (for example size or colour)");
   if (!toIdToken(name) || !toIdToken(variant)) {
-    throw new Error("Name and variant need letters or numbers");
+    throw new Error("The product name and type need letters or numbers");
   }
-  assertMoney(input.unit_cost_price, "Cost");
-  assertMoney(input.unit_selling_price, "Sell");
-  assertNonNegativeInt(input.low_stock_threshold, "Threshold");
-  assertNonNegativeInt(input.initial_qty, "Initial quantity");
+  assertMoney(input.unit_cost_price, "What it cost you");
+  assertMoney(input.unit_selling_price, "Your selling price");
+  assertNonNegativeInt(input.low_stock_threshold, "Warn me when stock gets to");
+  assertNonNegativeInt(input.initial_qty, "How many you have now");
 
   const sku_id = skuId(name, variant);
   const existing = await db.inventory.get(sku_id);
   if (existing) {
-    throw new Error(`SKU already exists: ${sku_id}`);
+    throw new Error("You already have this product with this type");
   }
 
   const sku: Sku = {
@@ -317,14 +317,14 @@ export async function createSku(input: CreateSkuInput): Promise<Sku> {
  */
 export async function updateSku(input: UpdateSkuInput): Promise<Sku> {
   const name = input.name.trim();
-  if (!name) throw new Error("Name is required");
-  assertMoney(input.unit_cost_price, "Cost");
-  assertMoney(input.unit_selling_price, "Sell");
-  assertNonNegativeInt(input.low_stock_threshold, "Threshold");
+  if (!name) throw new Error("Please type a product name");
+  assertMoney(input.unit_cost_price, "What it cost you");
+  assertMoney(input.unit_selling_price, "Your selling price");
+  assertNonNegativeInt(input.low_stock_threshold, "Warn me when stock gets to");
 
   const existing = await db.inventory.get(input.sku_id);
   if (!existing) {
-    throw new Error(`SKU missing: ${input.sku_id}`);
+    throw new Error("We could not find that product");
   }
 
   const next: Sku = {
@@ -428,7 +428,7 @@ export type CommitExpenseInput = {
 export async function commitExpense(
   input: CommitExpenseInput,
 ): Promise<{ txn_id: string; date_key: string }> {
-  assertPositiveMoney(input.amount, "Amount");
+  assertPositiveMoney(input.amount, "The amount");
   const dateKey = input.date_key ?? todayDateKey();
   const category = input.category?.trim() ?? "";
   const note = input.note?.trim() ?? "";
@@ -471,8 +471,8 @@ export type CommitRestockInput = {
 export async function commitRestock(
   input: CommitRestockInput,
 ): Promise<{ txn_id: string; sku_id: string; qty: number }> {
-  assertPositiveInt(input.qty, "Qty");
-  assertMoney(input.total_cost, "Total cost");
+  assertPositiveInt(input.qty, "How many came in");
+  assertMoney(input.total_cost, "Total you paid");
   const dateKey = input.date_key ?? todayDateKey();
 
   return db.transaction(
@@ -481,7 +481,7 @@ export async function commitRestock(
     async () => {
       const sku = await db.inventory.get(input.sku_id);
       if (!sku) {
-        throw new Error(`SKU missing: ${input.sku_id}`);
+        throw new Error("We could not find that product");
       }
 
       const nextQty = sku.stock_qty + input.qty;
@@ -536,7 +536,7 @@ export async function createPendingOrder(
   for (const item of input.items) {
     const sku = await db.inventory.get(item.product_id);
     if (!sku) {
-      throw new Error(`Cannot create pending order: SKU ${item.product_id} is missing`);
+      throw new Error("This product is no longer in your Stock Room");
     }
     lines.push({
       product_id: sku.sku_id,
@@ -660,7 +660,7 @@ export async function applyParseToPendingOrder(
       for (const item of matched) {
         const sku = await db.inventory.get(item.product_id);
         if (!sku) {
-          throw new Error(`Cannot apply parse: SKU ${item.product_id} is missing`);
+          throw new Error("This product is no longer in your Stock Room");
         }
         lines.push({
           product_id: sku.sku_id,

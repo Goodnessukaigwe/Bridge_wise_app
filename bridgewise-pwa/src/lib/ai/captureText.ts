@@ -134,7 +134,7 @@ async function commitExpensesFromCapture(
     return {
       ok: false,
       kind: "error",
-      message: "Couldn’t read an expense amount. Try “Fuel 5k”.",
+      message: "We could not read the amount. Try “Fuel 5k”.",
     };
   }
   const txn_ids: string[] = [];
@@ -158,7 +158,7 @@ async function commitRestockFromCapture(
     return {
       ok: false,
       kind: "error",
-      message: "Couldn’t read a restock qty. Try “Restocked 20 Ankara”.",
+      message: "We could not read how many you added. Try “Restocked 20 Ankara”.",
     };
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, Plus, RotateCcw, Share2, X } from "lucide-react";
+import { EmptyState, InboxArt } from "@/components/ui/Illustrations";
 import {
   useEffect,
   useId,
@@ -10,7 +11,8 @@ import {
   type FormEvent,
 } from "react";
 import { isWalkInName } from "@/lib/ai/identity";
-import { attachCustomerToWalkInOrder } from "@/lib/db/customers";
+import { attachCustomerToWalkInOrder, setCustomerPhone } from "@/lib/db/customers";
+import { canPickContacts, normalisePhone, pickContactPhone } from "@/lib/whatsapp";
 import { customerId } from "@/lib/db/dexie";
 import {
   cancelOrArchiveOrder,
@@ -37,8 +39,7 @@ const SHOE_SKU = "Black_Shoes_Size42";
 const CAKE_SKU = "Red_Velvet_Cake_8in";
 const isDev = process.env.NODE_ENV !== "production";
 
-const fieldClass =
-  "min-h-11 w-full rounded-[10px] border border-[#E8E6F0] bg-white px-3 text-sm text-[#0F0A2E] outline-none focus:border-[#17104A]";
+const fieldClass = "field";
 
 function formatNaira(amount: number) {
   return `₦${amount.toLocaleString("en-NG")}`;
@@ -76,26 +77,39 @@ function parsePositiveInt(raw: string): number {
   return Math.trunc(value);
 }
 
-function formatCommitError(result: CommitOrderResult): string | null {
+function productNameFor(id: string | undefined, skus: Sku[]): string {
+  if (!id) return "";
+  return skus.find((s) => s.sku_id === id)?.display_name ?? "";
+}
+
+function orderLabel(order: Pick<Order, "seq" | "date_key">): string {
+  return `Order ${order.seq}, ${formatDateKey(order.date_key)}`;
+}
+
+function formatCommitError(
+  result: CommitOrderResult,
+  skus: Sku[],
+): string | null {
   if (result.outcome !== "aborted") return null;
   if (result.reason === "empty_items") {
-    return "Unparsed chat — Confirm disabled until a product is matched.";
+    return "We could not find a product in this chat yet. Pick one before you mark it as sold.";
   }
-  const sku = result.sku_id ? ` (${result.sku_id})` : "";
+  const name = productNameFor(result.sku_id, skus);
+  const forName = name ? ` for ${name}` : "";
   if (result.reason === "out_of_stock") {
-    return `Out of stock${sku}. Sale not confirmed — nothing deducted.`;
+    return `Not enough in stock${forName}. Nothing was changed. Add new stock first.`;
   }
-  return `SKU missing${sku}. Sale not confirmed — nothing deducted.`;
+  return `We could not find that product${name ? ` (${name})` : ""}. Nothing was changed.`;
 }
 
 function captureLabel(method: CaptureMethod): string {
   switch (method) {
     case "clipboard":
-      return "Clipboard";
+      return "Pasted in";
     case "whatsapp_share_sheet":
-      return "WhatsApp share";
+      return "Shared from WhatsApp";
     case "manual":
-      return "Manual";
+      return "Typed in";
   }
 }
 
@@ -116,10 +130,13 @@ function orderNeedsRestock(order: Order, skus: Sku[]): boolean {
   return false;
 }
 
-function formatReturnError(result: ReturnOrderResult): string | null {
+function formatReturnError(
+  result: ReturnOrderResult,
+  skus: Sku[],
+): string | null {
   if (result.outcome !== "aborted") return null;
-  const sku = result.sku_id ? ` (${result.sku_id})` : "";
-  return `Cannot return — SKU missing${sku}.`;
+  const name = productNameFor(result.sku_id, skus);
+  return `We cannot log this return because the product${name ? ` (${name})` : ""} is no longer in your Stock Room.`;
 }
 
 function intentLabel(order: Order): string {
@@ -127,9 +144,9 @@ function intentLabel(order: Order): string {
     order.intent_classification === "HIGH_PURCHASE_INTENT" ||
     order.suggested_status === "READY_TO_CONFIRM"
   ) {
-    return "High purchase intent";
+    return "Ready to buy";
   }
-  return "Inquiry";
+  return "Just asking";
 }
 
 function hasPaymentSignal(order: Order): boolean {
@@ -142,8 +159,8 @@ function hasPaymentSignal(order: Order): boolean {
 
 function confirmCtaLabel(order: Order): string {
   return hasPaymentSignal(order)
-    ? "Confirm & Deduct Stock"
-    : "Tap to Confirm Sale";
+    ? "Mark as sold and update stock"
+    : "Mark as sold";
 }
 
 function formatDateKey(dateKey: string): string {
@@ -186,25 +203,25 @@ function WalkInCustomerPicker({
         type="button"
         disabled={disabled}
         onClick={() => onPick(recent.customer_id)}
-        className="min-h-11 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-medium text-neutral-800 disabled:opacity-50"
+        className="btn btn-quiet"
       >
-        Attach {recent.name}
+        Use {recent.name}
         {recent.saved_addresses[0] ? ` · ${recent.saved_addresses[0]}` : ""}
       </button>
       {customers.length > 1 ? (
-        <label className="block text-xs font-medium text-neutral-600">
-          Or pick another
+        <label className="label">
+          Or pick someone else
           <select
             className={`${fieldClass} mt-1`}
             value=""
             disabled={disabled}
-            aria-label="Attach a saved customer to this walk-in"
+            aria-label="Pick a saved customer for this order"
             onChange={(event) => {
               const id = event.target.value;
               if (id) onPick(id);
             }}
           >
-            <option value="">Recent customers</option>
+            <option value="">Your customers</option>
             {customers.map((customer) => (
               <option key={customer.customer_id} value={customer.customer_id}>
                 {customer.name}
@@ -259,15 +276,15 @@ function NewInquirySheet({
 
     const customer = name.trim();
     if (!customer) {
-      setError("Customer name is required");
+      setError("Please type the customer’s name");
       return;
     }
     if (!skuId) {
-      setError("Pick a SKU from Stock Room");
+      setError("Please pick a product");
       return;
     }
     if (!Number.isInteger(parsedQty) || parsedQty < 1) {
-      setError("Quantity must be a whole number of 1 or more");
+      setError("How many must be a whole number, 1 or more");
       return;
     }
 
@@ -282,7 +299,7 @@ function NewInquirySheet({
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not log inquiry");
+      setError(err instanceof Error ? err.message : "Could not save the order. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -290,44 +307,45 @@ function NewInquirySheet({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-center">
-      <div className="relative flex h-full w-full max-w-md items-end bg-neutral-900/40">
+      <div className="sheet-backdrop relative flex h-full w-full max-w-md items-end">
         <button
           type="button"
           className="absolute inset-0"
-          aria-label="Dismiss inquiry form"
+          aria-label="Close"
           onClick={onClose}
         />
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          className="relative max-h-[85%] w-full overflow-y-auto rounded-t-2xl border-t border-neutral-200 bg-white px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4 shadow-lg"
+          className="sheet-panel relative max-h-[90%] w-full overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3"
         >
-          <div className="mb-3 flex items-center justify-between">
-            <h2 id={titleId} className="text-base font-semibold text-[#0F0A2E]">
-              New Order
+          <div className="sheet-grab" />
+          <div className="mb-2 flex items-center justify-between">
+            <h2 id={titleId} className="text-[20px] font-extrabold tracking-tight text-[#0F0A2E]">
+              New order
             </h2>
             <button
               ref={closeRef}
               type="button"
               onClick={onClose}
-              aria-label="Close inquiry form"
-              className="inline-flex size-11 items-center justify-center rounded-full text-neutral-700"
+              aria-label="Close"
+              className="icon-btn bg-[#F1F0F8] text-[#3B3670]"
             >
               <X className="size-5" aria-hidden />
             </button>
           </div>
-          <p className="mb-3 text-sm leading-relaxed text-neutral-600">
-            Saves a pending card only. Stock and ₦ stay untouched until Confirm
-            Sale.
+          <p className="mb-4 text-[15px] leading-relaxed text-[#55517F]">
+            This saves the order as <b>Not paid yet</b>. Your stock and money
+            stay the same until you tap <b>Mark as sold</b>.
           </p>
           {skus.length === 0 ? (
-            <p className="text-sm text-neutral-600">
-              Add a SKU in Stock Room before logging an inquiry.
+            <p className="text-[15px] text-[#55517F]">
+              Add a product in Stock Room first, then you can save an order.
             </p>
           ) : (
             <form onSubmit={onSubmit} className="flex flex-col gap-3">
-              <label className="block text-xs font-medium text-neutral-600">
+              <label className="label">
                 Customer name
                 <input
                   required
@@ -338,7 +356,7 @@ function NewInquirySheet({
                   placeholder="Chioma"
                 />
               </label>
-              <label className="block text-xs font-medium text-neutral-600">
+              <label className="label">
                 Delivery address
                 <input
                   value={address}
@@ -348,8 +366,8 @@ function NewInquirySheet({
                   placeholder="Lekki Phase 1"
                 />
               </label>
-              <label className="block text-xs font-medium text-neutral-600">
-                SKU
+              <label className="label">
+                Product
                 <select
                   required
                   value={skuId}
@@ -358,14 +376,14 @@ function NewInquirySheet({
                 >
                   {skus.map((sku) => (
                     <option key={sku.sku_id} value={sku.sku_id}>
-                      {sku.display_name} · {sku.stock_qty} on hand ·{" "}
+                      {sku.display_name} · {sku.stock_qty} left ·{" "}
                       {formatNaira(sku.unit_selling_price)}
                     </option>
                   ))}
                 </select>
               </label>
-              <label className="block text-xs font-medium text-neutral-600">
-                Quantity
+              <label className="label">
+                How many?
                 <input
                   required
                   inputMode="numeric"
@@ -375,22 +393,22 @@ function NewInquirySheet({
                 />
               </label>
               {shortOnHand ? (
-                <p className="text-xs leading-relaxed text-amber-800">
-                  On-hand is {selected?.stock_qty}. You can still log the
-                  inquiry — Confirm Sale will refuse if stock is short.
+                <p className="rounded-xl bg-[#FEF0C7] px-3 py-2 text-[14px] font-semibold leading-relaxed text-[#7A4300]">
+                  You only have {selected?.stock_qty} in stock. You can still
+                  save this order, but add new stock before you mark it as sold.
                 </p>
               ) : null}
               {error ? (
-                <p className="text-sm text-red-700" role="alert">
+                <p className="rounded-xl bg-red-50 px-3 py-2 text-[14px] font-semibold text-red-800" role="alert">
                   {error}
                 </p>
               ) : null}
               <button
                 type="submit"
                 disabled={busy}
-                className="mt-1 min-h-11 rounded-lg bg-neutral-900 px-3 text-sm font-semibold text-white disabled:opacity-50"
+                className="btn btn-primary mt-1 min-h-[54px]"
               >
-                {busy ? "Saving…" : "Save inquiry"}
+                {busy ? "Saving…" : "Save order"}
               </button>
             </form>
           )}
@@ -433,6 +451,9 @@ function OrderDetailSheet({
   const [shareStatus, setShareStatus] = useState<string | null>(null);
   const [shareFailed, setShareFailed] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [phoneDraft, setPhoneDraft] = useState("");
+  const [phoneEditing, setPhoneEditing] = useState(false);
+  const [phoneNote, setPhoneNote] = useState<string | null>(null);
 
   const pending = order.status === "PENDING_INQUIRY" && !order.ledger_committed;
   const confirmed = order.status === "CONFIRMED_SALE" && order.ledger_committed;
@@ -472,16 +493,37 @@ function OrderDetailSheet({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const savedPhone = normalisePhone(linked?.phone);
+
+  async function savePhone(raw: string) {
+    const result = await setCustomerPhone(order.customer_name, raw);
+    if (result === "invalid") {
+      setPhoneNote("That number does not look right, so we have not saved it.");
+      return;
+    }
+    setPhoneNote(result === "saved" ? "Number saved." : null);
+    setPhoneEditing(false);
+  }
+
+  async function pickFromContacts() {
+    const picked = await pickContactPhone();
+    if (picked) {
+      setPhoneDraft(picked);
+      await savePhone(picked);
+    }
+  }
+
   async function onShare() {
     if (sharing) return;
     setSharing(true);
     setShareStatus(null);
     setShareFailed(false);
     try {
-      const result = await shareReceipt(order);
-      if (result.status === "shared") setShareStatus("Shared");
-      else if (result.status === "copied") setShareStatus("Copied");
-      else if (result.status === "cancelled") setShareStatus("Share cancelled");
+      const result = await shareReceipt(order, savedPhone);
+      if (result.status === "whatsapp") setShareStatus("Opening WhatsApp…");
+      else if (result.status === "shared") setShareStatus("Receipt shared");
+      else if (result.status === "copied") setShareStatus("Receipt copied. Paste it in WhatsApp.");
+      else if (result.status === "cancelled") setShareStatus("Receipt not shared");
       else {
         setShareFailed(true);
         setShareStatus(result.message);
@@ -493,30 +535,31 @@ function OrderDetailSheet({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-center">
-      <div className="relative flex h-full w-full max-w-md items-end bg-neutral-900/40">
+      <div className="sheet-backdrop relative flex h-full w-full max-w-md items-end">
         <button
           type="button"
           className="absolute inset-0"
-          aria-label="Close order detail"
+          aria-label="Close"
           onClick={onClose}
         />
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          className="relative max-h-[85%] w-full overflow-y-auto rounded-t-2xl border-t border-neutral-200 bg-white px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4 shadow-lg"
+          className="sheet-panel relative max-h-[90%] w-full overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3"
         >
           {/* Sheet header */}
+          <div className="sheet-grab" />
           <div className="mb-3 flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h2
                 id={titleId}
-                className="truncate text-base font-semibold text-neutral-900"
+                className="truncate text-[20px] font-extrabold tracking-tight text-[#0F0A2E]"
               >
                 {order.customer_name}
               </h2>
-              <p className="font-mono text-[11px] text-neutral-500">
-                {order.order_id}
+              <p className="text-[13px] font-medium text-[#55517F]">
+                {orderLabel(order)}
               </p>
             </div>
             <button
@@ -524,21 +567,21 @@ function OrderDetailSheet({
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-neutral-700"
+              className="icon-btn shrink-0 bg-[#F1F0F8] text-[#3B3670]"
             >
               <X className="size-5" aria-hidden />
             </button>
           </div>
 
           {/* Tab switcher */}
-          <div className="mb-4 flex rounded-lg border border-neutral-200 bg-neutral-100 p-0.5">
+          <div className="mb-4 flex gap-1 rounded-2xl bg-[#F1F0F8] p-1">
             <button
               type="button"
               onClick={() => setActiveTab("details")}
-              className={`flex-1 rounded-md py-1.5 text-sm font-semibold transition-colors ${
+              className={`min-h-11 flex-1 rounded-xl py-2 text-[15px] font-bold transition-colors ${
                 activeTab === "details"
-                  ? "bg-white text-neutral-900 shadow-sm"
-                  : "text-neutral-500"
+                  ? "bg-white text-[#17104A] shadow-sm"
+                  : "text-[#55517F]"
               }`}
             >
               Details
@@ -546,13 +589,13 @@ function OrderDetailSheet({
             <button
               type="button"
               onClick={() => setActiveTab("history")}
-              className={`flex-1 rounded-md py-1.5 text-sm font-semibold transition-colors ${
+              className={`min-h-11 flex-1 rounded-xl py-2 text-[15px] font-bold transition-colors ${
                 activeTab === "history"
-                  ? "bg-white text-neutral-900 shadow-sm"
-                  : "text-neutral-500"
+                  ? "bg-white text-[#17104A] shadow-sm"
+                  : "text-[#55517F]"
               }`}
             >
-              History{history.length > 0 ? ` (${history.length})` : ""}
+              Past orders{history.length > 0 ? ` (${history.length})` : ""}
             </button>
           </div>
 
@@ -560,53 +603,113 @@ function OrderDetailSheet({
           {activeTab === "details" && (
             <div>
               <span
-                className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                  pending
-                    ? "bg-amber-200 text-amber-950"
-                    : "bg-emerald-200 text-emerald-950"
+                className={`pill ${
+                  pending ? "pill-amber" : "pill-green"
                 }`}
               >
-                {pending ? "PENDING INQUIRY" : "CONFIRMED SALE"}
+                {pending ? "Not paid yet" : "Sold"}
               </span>
 
               {unparsed ? (
                 <>
                   {rawSnippet ? (
-                    <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm text-neutral-800">
+                    <p className="mt-3 line-clamp-4 whitespace-pre-wrap rounded-2xl bg-[#F4F3FF] p-3 text-[15px] text-[#0F0A2E]">
                       {rawSnippet}
                     </p>
                   ) : null}
-                  <p className="mt-2 text-sm font-medium text-amber-950">
-                    Unparsed chat — Confirm disabled until a product is matched.
+                  <p className="mt-2 text-[14px] font-semibold text-[#7A4300]">
+                    We could not find a product in this chat yet. You cannot
+                    mark it as sold until one is matched.
                   </p>
                 </>
               ) : (
                 <>
-                  <p className="mt-3 text-sm font-medium text-neutral-900">
+                  <p className="mt-3 text-[17px] font-bold text-[#0F0A2E]">
                     {formatLines(order.items)}
                   </p>
-                  <p className="mt-0.5 text-sm tabular-nums text-neutral-700">
+                  <p className="amount mt-0.5 text-[24px] font-extrabold text-[#17104A]">
                     {formatNaira(gross)}
                   </p>
                   {rawSnippet ? (
-                    <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm text-neutral-700">
+                    <p className="mt-2 line-clamp-3 whitespace-pre-wrap rounded-2xl bg-[#F4F3FF] p-3 text-[14px] text-[#3B3670]">
                       {rawSnippet}
                     </p>
                   ) : snippet ? (
-                    <p className="mt-2 line-clamp-2 text-sm text-neutral-700">
+                    <p className="mt-2 line-clamp-2 text-[15px] text-[#3B3670]">
                       {snippet}
                     </p>
                   ) : (
-                    <p className="mt-2 text-sm text-neutral-500">
-                      No delivery address
+                    <p className="mt-2 text-[14px] text-[#6B6898]">
+                      No delivery address yet
                     </p>
                   )}
                 </>
               )}
 
-              <p className="mt-2 text-xs font-medium text-neutral-600">
-                Intent: {intentLabel(order)} · {captureLabel(order.capture_method)}
+              <p className="mt-2 text-[13px] font-semibold text-[#55517F]">
+                {intentLabel(order)} · {captureLabel(order.capture_method)}
               </p>
+
+              {!walkIn ? (
+                <div className="mt-3 rounded-2xl bg-[#F4F3FF] px-3 py-3">
+                  <p className="text-[13px] font-bold text-[#3B3670]">
+                    WhatsApp number (optional)
+                  </p>
+                  {savedPhone && !phoneEditing ? (
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <p className="amount text-[16px] font-bold text-[#0F0A2E]">
+                        +{savedPhone}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPhoneDraft(savedPhone);
+                          setPhoneEditing(true);
+                          setPhoneNote(null);
+                        }}
+                        className="min-h-11 px-2 text-[14px] font-bold text-[#17104A] underline"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-1 flex flex-col gap-2">
+                      <input
+                        value={phoneDraft}
+                        onChange={(e) => setPhoneDraft(e.target.value)}
+                        inputMode="tel"
+                        autoComplete="tel"
+                        aria-label="Customer WhatsApp number"
+                        placeholder="0803 123 4567"
+                        className={fieldClass}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void savePhone(phoneDraft)}
+                          className="btn btn-secondary flex-1"
+                        >
+                          Save number
+                        </button>
+                        {canPickContacts() ? (
+                          <button
+                            type="button"
+                            onClick={() => void pickFromContacts()}
+                            className="btn btn-quiet flex-1"
+                          >
+                            Pick from contacts
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+                  {phoneNote ? (
+                    <p className="mt-1 text-[13px] font-semibold text-[#55517F]" role="status">
+                      {phoneNote}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
 
               {pending && walkIn ? (
                 <WalkInCustomerPicker
@@ -617,28 +720,29 @@ function OrderDetailSheet({
               ) : null}
 
               {pending ? (
-                <p className="mt-3 text-sm font-medium text-amber-950">
-                  0 stock deducted. Pocket unchanged until Confirm Sale.
+                <p className="mt-3 rounded-2xl bg-[#FEF6DC] px-3 py-2.5 text-[14px] font-semibold text-[#7A4300]">
+                  Nothing has come out of your stock or into your money yet.
+                  That happens when you tap Mark as sold.
                 </p>
               ) : (
-                <p className="mt-3 text-sm font-medium text-emerald-950">
-                  Stock Deducted • Profit Logged
+                <p className="mt-3 rounded-2xl bg-[#E4F8EE] px-3 py-2.5 text-[14px] font-semibold text-[#065F46]">
+                  Done. Your stock is reduced and your profit is saved.
                 </p>
               )}
 
               {needsRestock ? (
-                <p className="mt-2 text-sm font-medium text-red-800" role="status">
-                  out of stock — restock first
+                <p className="mt-2 text-[14px] font-semibold text-red-800" role="status">
+                  Not enough in stock. Add new stock first.
                 </p>
               ) : null}
 
               {error ? (
-                <p className="mt-2 text-sm text-red-700" role="alert">
+                <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-[14px] font-semibold text-red-800" role="alert">
                   {error}
                 </p>
               ) : null}
 
-              <div className="mt-3 flex flex-col gap-2">
+              <div className="mt-4 flex flex-col gap-2.5">
                 {pending ? (
                   <>
                     <button
@@ -647,17 +751,18 @@ function OrderDetailSheet({
                         busy || order.ledger_committed || unparsed || needsRestock
                       }
                       onClick={onConfirm}
-                      className="min-h-11 rounded-lg bg-neutral-900 px-3 text-sm font-semibold text-white disabled:opacity-50"
+                      className="btn btn-success min-h-[54px]"
                     >
+                      <Check className="size-5" strokeWidth={3} aria-hidden />
                       {confirmCtaLabel(order)}
                     </button>
                     <button
                       type="button"
                       disabled={busy}
                       onClick={onCancel}
-                      className="min-h-11 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-medium text-neutral-800 disabled:opacity-50"
+                      className="btn btn-quiet"
                     >
-                      Cancel / Archive
+                      Cancel this order
                     </button>
                   </>
                 ) : null}
@@ -667,13 +772,14 @@ function OrderDetailSheet({
                       type="button"
                       disabled={busy || sharing}
                       onClick={onShare}
-                      className="min-h-11 rounded-lg bg-neutral-900 px-3 text-sm font-semibold text-white disabled:opacity-50"
+                      className="btn btn-primary min-h-[54px]"
                     >
-                      {sharing ? "Sharing…" : "Share Receipt"}
+                      <Share2 className="size-5" aria-hidden />
+                      {sharing ? "Opening…" : "Send receipt on WhatsApp"}
                     </button>
                     {shareStatus ? (
                       <p
-                        className={`text-sm ${shareFailed ? "text-red-700" : "text-emerald-950"}`}
+                        className={`text-[14px] font-semibold ${shareFailed ? "text-red-700" : "text-[#065F46]"}`}
                         role="status"
                       >
                         {shareStatus}
@@ -683,9 +789,9 @@ function OrderDetailSheet({
                       type="button"
                       disabled={busy}
                       onClick={onReturn}
-                      className="min-h-11 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-medium text-neutral-800 disabled:opacity-50"
+                      className="btn btn-quiet"
                     >
-                      Log return
+                      Customer returned this
                     </button>
                   </>
                 ) : null}
@@ -698,22 +804,24 @@ function OrderDetailSheet({
             <div>
               {history.length === 0 ? (
                 <div className="py-10 text-center">
-                  <p className="text-sm text-neutral-500">No previous orders</p>
+                  <p className="text-[15px] text-[#55517F]">
+                    No earlier orders from this customer yet
+                  </p>
                 </div>
               ) : (
-                <ul className="divide-y divide-neutral-100">
+                <ul className="divide-y divide-[#ECEAF7]">
                   {history.map((h) => (
                     <li key={h.order_id} className="py-3">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-xs font-medium text-neutral-500">
+                          <p className="text-[13px] font-semibold text-[#55517F]">
                             {formatDateKey(h.date_key)}
                           </p>
-                          <p className="mt-0.5 truncate text-sm font-medium text-neutral-900">
+                          <p className="mt-0.5 truncate text-[15px] font-semibold text-[#0F0A2E]">
                             {formatLines(h.items)}
                           </p>
                         </div>
-                        <p className="shrink-0 text-sm font-semibold tabular-nums text-emerald-800">
+                        <p className="amount shrink-0 text-[15px] font-bold text-[#065F46]">
                           {formatNaira(orderGross(h.items))}
                         </p>
                       </div>
@@ -825,6 +933,13 @@ export function OrderStream() {
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [soldName, setSoldName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (soldName === null) return;
+    const t = window.setTimeout(() => setSoldName(null), 1300);
+    return () => window.clearTimeout(t);
+  }, [soldName]);
 
   const visible = useMemo(
     () => newestFirst((orders ?? []).filter(isInboxVisible)),
@@ -867,9 +982,12 @@ export function OrderStream() {
   async function onConfirm(orderId: string) {
     await run(orderId, async () => {
       const result = await commitConfirmedOrder(orderId);
-      const message = formatCommitError(result);
+      const message = formatCommitError(result, skus ?? []);
       if (message) {
         setErrors((prev) => ({ ...prev, [orderId]: message }));
+      } else if (result.outcome === "committed") {
+        const who = (orders ?? []).find((o) => o.order_id === orderId);
+        setSoldName(who?.customer_name ?? "");
       }
     });
   }
@@ -883,7 +1001,7 @@ export function OrderStream() {
   async function onReturn(orderId: string) {
     await run(orderId, async () => {
       const result = await processReturn(orderId);
-      const message = formatReturnError(result);
+      const message = formatReturnError(result, skus ?? []);
       if (message) {
         setErrors((prev) => ({ ...prev, [orderId]: message }));
       }
@@ -923,7 +1041,7 @@ export function OrderStream() {
       (o) => o.status === "CONFIRMED_SALE" || o.status === "REFUNDED",
     );
     if (blocked.length > 0) {
-      setDeleteError("Confirmed and refunded orders cannot be deleted.");
+      setDeleteError("Sold and returned orders cannot be deleted.");
       return;
     }
     setDeleting(true);
@@ -932,7 +1050,7 @@ export function OrderStream() {
       setCheckedIds(new Set());
       setDeleteError(null);
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Delete failed");
+      setDeleteError(err instanceof Error ? err.message : "Could not delete. Please try again.");
     } finally {
       setDeleting(false);
     }
@@ -941,8 +1059,8 @@ export function OrderStream() {
   if (orders === undefined || skus === undefined || customers === undefined) {
     return (
       <section className="flex min-h-full flex-col items-center justify-center px-6 py-10 text-center">
-        <h1 className="text-lg font-semibold text-neutral-900">Order Stream</h1>
-        <p className="mt-3 text-sm text-neutral-600">Loading orders…</p>
+        <h1 className="page-title">Order Stream</h1>
+        <p className="mt-3 text-[15px] text-[#55517F]">Loading your orders…</p>
       </section>
     );
   }
@@ -951,90 +1069,85 @@ export function OrderStream() {
     a.display_name.localeCompare(b.display_name),
   );
   const directory = recentCustomers(customers, orders);
+  const allChecked =
+    visible.length > 0 && visible.every((o) => checkedIds.has(o.order_id));
+  const someChecked = visible.some((o) => checkedIds.has(o.order_id));
+  const waiting = visible.filter(
+    (o) => o.status === "PENDING_INQUIRY" && !o.ledger_committed,
+  ).length;
 
   return (
-    <section className="flex min-h-full flex-col px-4 py-6">
-      <h1 className="text-center text-[22px] font-bold text-[#0F0A2E]">
-        Order Stream
-      </h1>
+    <section className="flex min-h-full flex-col px-4 pb-28 pt-5">
+      <h1 className="page-title">Order Stream</h1>
+      <p className="page-sub mt-0.5">
+        {visible.length === 0
+          ? "Your customers’ orders show up here"
+          : waiting > 0
+            ? `${waiting} order${waiting !== 1 ? "s" : ""} not paid yet`
+            : "All your orders are sold"}
+      </p>
       <button
         type="button"
         onClick={() => setSheetOpen(true)}
-        className="mt-4 flex h-[54px] w-full items-center justify-center gap-1.5 rounded-[10px] bg-[#17104A] text-[15px] font-semibold text-white"
+        className="btn btn-primary mt-4 min-h-[54px] w-full"
       >
-        <Plus className="size-4" strokeWidth={2.5} aria-hidden />
-        New Order
+        <Plus className="size-5" strokeWidth={2.5} aria-hidden />
+        New order
       </button>
 
       {visible.length === 0 ? (
-        <div className="mt-10 flex flex-col items-center text-center">
-          <p className="max-w-xs text-[18px] font-semibold leading-snug text-[#0F0A2E]">
-            No orders yet
-          </p>
-          <p className="mt-2 max-w-xs text-sm leading-relaxed text-[#6B6898]">
-            Share a WhatsApp chat into OnRecord, or tap the amber button below
-            to paste one.
-          </p>
-        </div>
+        <EmptyState
+          art={<InboxArt className="w-full" />}
+          title="No orders yet"
+          body="Share a WhatsApp chat into OnRecord, or tap the amber + button to add one."
+        />
       ) : (
-        <div className="mt-6 overflow-x-auto rounded-xl border border-neutral-200 bg-white">
+        <div className="card mt-5 overflow-hidden">
           <table className="w-full table-fixed border-collapse text-sm">
             <colgroup>
-              <col className="w-[7%]" />
-              <col className="w-[20%]" />
-              <col className="w-[22%]" />
-              <col className="w-[14%]" />
-              <col className="w-[13%]" />
-              <col className="w-[24%]" />
+              <col className="w-[12%]" />
+              <col className="w-[34%]" />
+              <col className="w-[26%]" />
+              <col className="w-[28%]" />
             </colgroup>
             <thead>
-              <tr className="border-b border-neutral-200">
-                <th scope="col" className="px-2 py-2 text-center">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all orders"
-                    checked={visible.length > 0 && visible.every((o) => checkedIds.has(o.order_id))}
-                    ref={(el) => {
-                      if (el) el.indeterminate = visible.some((o) => checkedIds.has(o.order_id)) && !visible.every((o) => checkedIds.has(o.order_id));
-                    }}
-                    onChange={toggleAll}
-                    className="accent-[#17104A]"
-                  />
+              <tr className="border-b border-[#ECEAF7] bg-[#F7F6FE]">
+                <th scope="col" className="p-0 text-center">
+                  <label className="flex min-h-11 cursor-pointer items-center justify-center">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all orders"
+                      checked={allChecked}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someChecked && !allChecked;
+                      }}
+                      onChange={toggleAll}
+                      className="size-5 accent-[#17104A]"
+                    />
+                  </label>
                 </th>
                 <th
                   scope="col"
-                  className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-neutral-500"
+                  className="px-2 py-2 text-left text-[12px] font-bold text-[#55517F]"
                 >
                   Customer
                 </th>
                 <th
                   scope="col"
-                  className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-neutral-500"
+                  className="px-2 py-2 text-left text-[12px] font-bold text-[#55517F]"
                 >
-                  Items
+                  What they want
                 </th>
                 <th
                   scope="col"
-                  className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-neutral-500"
-                >
-                  ₦
-                </th>
-                <th
-                  scope="col"
-                  className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-neutral-500"
-                >
-                  Status
-                </th>
-                <th
-                  scope="col"
-                  className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-neutral-500"
+                  className="px-2 py-2 text-center text-[12px] font-bold text-[#55517F]"
                 >
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {visible.map((order) => {
+            <tbody className="divide-y divide-[#F0EEF9]">
+              {visible.map((order, index) => {
                 const isPending =
                   order.status === "PENDING_INQUIRY" && !order.ledger_committed;
                 const isConfirmed =
@@ -1044,7 +1157,7 @@ export function OrderStream() {
                   isPending && !unparsed && orderNeedsRestock(order, skus);
                 const gross = orderGross(order.items);
                 const itemSummary = unparsed
-                  ? "(unparsed)"
+                  ? "Needs a product"
                   : formatLines(order.items);
 
                 const isChecked = checkedIds.has(order.order_id);
@@ -1053,54 +1166,51 @@ export function OrderStream() {
                   <tr
                     key={order.order_id}
                     onClick={() => setSelectedOrderId(order.order_id)}
-                    className={`cursor-pointer transition-colors ${
+                    style={{ ["--i" as string]: Math.min(index, 8) }}
+                    className={`anim-card cursor-pointer transition-colors ${
                       isChecked
                         ? "bg-[#EEF0FF]"
                         : isPending
-                          ? "bg-white hover:bg-amber-50"
-                          : "bg-[#F0FDF8] hover:bg-emerald-50"
+                          ? "bg-white active:bg-[#FFF8E6]"
+                          : "bg-[#F3FCF8] active:bg-[#E4F8EE]"
                     }`}
                   >
                     <td
-                      className="px-2 py-3 text-center"
+                      className="p-0 text-center"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <input
-                        type="checkbox"
-                        aria-label={`Select order for ${order.customer_name}`}
-                        checked={isChecked}
-                        onChange={() => toggleCheck(order.order_id)}
-                        className="accent-[#17104A]"
-                      />
+                      <label className="flex min-h-16 cursor-pointer items-center justify-center">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select order for ${order.customer_name}`}
+                          checked={isChecked}
+                          onChange={() => toggleCheck(order.order_id)}
+                          className="size-5 accent-[#17104A]"
+                        />
+                      </label>
                     </td>
-                    <td
-                      className={`max-w-0 overflow-hidden border-l-4 px-3 py-3 ${
-                        isPending
-                          ? "border-l-[#F59E0B]"
-                          : "border-l-[#10B981]"
-                      }`}
-                    >
-                      <p className="truncate font-semibold text-[#0F0A2E]">
+                    <td className="max-w-0 overflow-hidden px-2 py-3">
+                      <p className="truncate text-[15px] font-bold text-[#0F0A2E]">
                         {order.customer_name}
                       </p>
-                    </td>
-                    <td className="max-w-0 overflow-hidden px-3 py-3">
-                      <p className="truncate text-neutral-700">{itemSummary}</p>
-                    </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-neutral-700">
-                      {gross > 0 ? formatNaira(gross) : "—"}
-                    </td>
-                    <td className="px-3 py-3">
                       <span
-                        className={`text-xs font-semibold ${
-                          isPending ? "text-amber-800" : "text-emerald-800"
+                        className={`pill mt-1 !px-2 !text-[11.5px] ${
+                          isPending ? "pill-amber" : "pill-green"
                         }`}
                       >
-                        {isPending ? "Pending" : "Received"}
+                        {isPending ? "Not paid yet" : "Sold"}
                       </span>
                     </td>
+                    <td className="max-w-0 overflow-hidden px-2 py-3">
+                      <p className="truncate text-[14px] text-[#3B3670]">
+                        {itemSummary}
+                      </p>
+                      <p className="amount text-[15px] font-extrabold text-[#17104A]">
+                        {gross > 0 ? formatNaira(gross) : "—"}
+                      </p>
+                    </td>
                     <td
-                      className="px-3 py-3"
+                      className="px-1 py-2"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="flex items-center justify-center gap-1">
@@ -1115,12 +1225,12 @@ export function OrderStream() {
                                 needsRestock
                               }
                               onClick={() => onConfirm(order.order_id)}
-                              aria-label={`Confirm sale for ${order.customer_name}`}
-                              className="inline-flex size-9 items-center justify-center rounded-lg bg-neutral-900 text-white disabled:opacity-40"
+                              aria-label={`Mark as sold for ${order.customer_name}`}
+                              className="icon-btn bg-[#0B9467] text-white shadow-[0_4px_10px_-4px_rgba(11,148,103,0.7)]"
                             >
                               <Check
-                                className="size-4"
-                                strokeWidth={2.5}
+                                className="size-5"
+                                strokeWidth={3}
                                 aria-hidden
                               />
                             </button>
@@ -1129,9 +1239,9 @@ export function OrderStream() {
                               disabled={busy}
                               onClick={() => onCancel(order.order_id)}
                               aria-label={`Cancel order for ${order.customer_name}`}
-                              className="inline-flex size-9 items-center justify-center rounded-lg border border-neutral-300 bg-white text-neutral-700 disabled:opacity-40"
+                              className="icon-btn border border-[#DAD7EE] bg-white text-[#55517F]"
                             >
-                              <X className="size-4" aria-hidden />
+                              <X className="size-5" aria-hidden />
                             </button>
                           </>
                         ) : null}
@@ -1140,10 +1250,10 @@ export function OrderStream() {
                             type="button"
                             disabled={busy}
                             onClick={() => setSelectedOrderId(order.order_id)}
-                            aria-label={`Share receipt for ${order.customer_name}`}
-                            className="inline-flex size-9 items-center justify-center rounded-lg bg-neutral-900 text-white disabled:opacity-40"
+                            aria-label={`Send receipt to ${order.customer_name}`}
+                            className="icon-btn bg-[#17104A] text-white"
                           >
-                            <Share2 className="size-4" aria-hidden />
+                            <Share2 className="size-5" aria-hidden />
                           </button>
                         ) : null}
                         {!isPending && !isConfirmed ? (
@@ -1151,9 +1261,9 @@ export function OrderStream() {
                             type="button"
                             onClick={() => setSelectedOrderId(order.order_id)}
                             aria-label={`View order for ${order.customer_name}`}
-                            className="inline-flex size-9 items-center justify-center rounded-lg border border-neutral-300 bg-white text-neutral-700"
+                            className="icon-btn border border-[#DAD7EE] bg-white text-[#55517F]"
                           >
-                            <RotateCcw className="size-4" aria-hidden />
+                            <RotateCcw className="size-5" aria-hidden />
                           </button>
                         ) : null}
                       </div>
@@ -1196,28 +1306,44 @@ export function OrderStream() {
         />
       ) : null}
 
-      {checkedIds.size > 0 ? (
-        <div className="fixed bottom-14 inset-x-0 z-20 flex justify-center">
-          <div className="w-full max-w-md border-t border-[#E8E6F0] bg-white px-4">
-            <div className="flex h-14 items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-[#0F0A2E]">
-                {checkedIds.size} selected
-              </p>
-              <button
-                type="button"
-                disabled={deleting}
-                onClick={() => void onDeleteSelected()}
-                className="rounded-[10px] bg-[#EF4444] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {deleting ? "Deleting…" : "Delete"}
-              </button>
-            </div>
-            {deleteError ? (
-              <p className="pb-2 text-xs font-medium text-[#EF4444]" role="alert">
-                {deleteError}
-              </p>
-            ) : null}
+      {soldName !== null ? (
+        <div
+          className="pointer-events-none absolute inset-0 z-[70] flex flex-col items-center justify-center bg-[#0F0A2E]/35"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="relative flex size-28 items-center justify-center">
+            <span className="anim-ring absolute inset-0 rounded-full bg-[#10B981]" />
+            <span className="anim-pop flex size-24 items-center justify-center rounded-full bg-gradient-to-b from-[#14B882] to-[#0B9467] shadow-[0_12px_30px_-8px_rgba(11,148,103,0.8)]">
+              <Check className="size-12 text-white" strokeWidth={3.5} aria-hidden />
+            </span>
           </div>
+          <p className="anim-toast mt-5 rounded-full bg-white px-5 py-2 text-[17px] font-extrabold text-[#065F46] shadow-lg">
+            Sold{soldName ? ` to ${soldName}` : ""}!
+          </p>
+        </div>
+      ) : null}
+
+      {checkedIds.size > 0 ? (
+        <div className="anim-toast absolute inset-x-0 bottom-[67px] z-20 border-t border-[#E6E3F5] bg-white px-4 shadow-[0_-8px_20px_-10px_rgba(23,16,74,0.3)]">
+          <div className="flex min-h-16 items-center justify-between gap-3">
+            <p className="text-[15px] font-bold text-[#0F0A2E]">
+              {checkedIds.size} selected
+            </p>
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={() => void onDeleteSelected()}
+              className="btn btn-danger"
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+          </div>
+          {deleteError ? (
+            <p className="pb-2 text-[13px] font-semibold text-red-600" role="alert">
+              {deleteError}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </section>

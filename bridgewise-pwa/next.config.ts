@@ -7,6 +7,8 @@ const withPWA = withPWAInit({
   reloadOnOnline: false,
   extendDefaultRuntimeCaching: true,
   workboxOptions: {
+    // New cache names so old runtime caches (including the old black icons) are dropped.
+    cacheId: "onrecord-v2",
     runtimeCaching: [
       {
         urlPattern: /\/api\/parse(?:\?|$)/,

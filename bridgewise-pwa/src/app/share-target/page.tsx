@@ -37,8 +37,8 @@ export default function ShareTargetPage() {
   }, [router]);
 
   return (
-    <p className="px-4 py-10 text-center text-sm text-neutral-600">
-      Saving shared chat…
+    <p className="px-4 py-10 text-center text-[15px] font-medium text-[#55517F]">
+      Saving your chat…
     </p>
   );
 }

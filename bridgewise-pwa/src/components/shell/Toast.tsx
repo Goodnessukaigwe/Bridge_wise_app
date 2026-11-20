@@ -56,15 +56,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       {toast ? (
         <div
-          className="pointer-events-none absolute inset-x-0 top-14 z-[60] flex justify-center px-4"
+          className="pointer-events-none absolute inset-x-0 top-16 z-[60] flex justify-center px-4"
           aria-live={toast.kind === "error" ? "assertive" : "polite"}
         >
           <p
             role={toast.kind === "error" ? "alert" : "status"}
-            className={`pointer-events-auto max-w-sm rounded-lg border px-3 py-2 text-sm font-medium shadow-md ${
+            className={`anim-toast pointer-events-auto max-w-sm rounded-2xl border px-4 py-3 text-[15px] font-semibold shadow-[0_10px_30px_-10px_rgba(15,10,46,0.45)] ${
               toast.kind === "error"
                 ? "border-red-300 bg-red-50 text-red-950"
-                : "border-amber-300 bg-amber-50 text-amber-950"
+                : "border-[#F7D58A] bg-[#FFF8E6] text-[#5C3A00]"
             }`}
           >
             {toast.text}

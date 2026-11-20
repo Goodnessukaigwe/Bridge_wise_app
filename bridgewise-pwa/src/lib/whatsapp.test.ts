@@ -1,0 +1,32 @@
+import { describe, expect, it } from "vitest";
+import { normalisePhone, whatsappUrl } from "./whatsapp";
+
+describe("normalisePhone", () => {
+  it("handles common Nigerian formats", () => {
+    expect(normalisePhone("0803 123 4567")).toBe("2348031234567");
+    expect(normalisePhone("+234 (803) 123-4567")).toBe("2348031234567");
+    expect(normalisePhone("2348031234567")).toBe("2348031234567");
+    expect(normalisePhone("8031234567")).toBe("2348031234567");
+  });
+  it("treats rubbish as missing", () => {
+    expect(normalisePhone("")).toBeNull();
+    expect(normalisePhone("abc")).toBeNull();
+    expect(normalisePhone("12345")).toBeNull();
+    expect(normalisePhone("234803123")).toBeNull();
+  });
+  it("accepts other international numbers", () => {
+    expect(normalisePhone("+44 7700 900123")).toBe("447700900123");
+  });
+});
+
+describe("whatsappUrl", () => {
+  it("keeps line breaks and encodes text", () => {
+    const url = whatsappUrl("Hi\nTotal ₦5,000", "08031234567");
+    expect(url).toBe(
+      "https://wa.me/2348031234567?text=Hi%0ATotal%20%E2%82%A65%2C000",
+    );
+  });
+  it("falls back to the chat picker without a number", () => {
+    expect(whatsappUrl("Hi", "nope")).toBe("https://wa.me/?text=Hi");
+  });
+});
