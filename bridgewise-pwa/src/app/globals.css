@@ -38,6 +38,7 @@ textarea {
   letter-spacing: -0.01em;
 }
 
+@layer components {
 /* ---------- Layout surfaces ---------- */
 .app-surface {
   background:
@@ -198,6 +199,8 @@ textarea.field {
   width: 40px;
   border-radius: 999px;
   background: #D6D2EC;
+}
+
 }
 
 /* ---------- Motion ---------- */

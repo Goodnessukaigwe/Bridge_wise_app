@@ -1,11 +1,14 @@
 import { isWalkInName } from "@/lib/ai/identity";
 import { customerId, db, toIdToken } from "@/lib/db/dexie";
+import { findCustomerIn } from "@/lib/db/customerMatch";
 import { normalisePhone } from "@/lib/whatsapp";
 import type { Customer } from "@/types/bridgewise";
 
 export type UpsertCustomerInput = {
   name: string;
   address?: string;
+  /** Phone as typed. A matching number means the same person. */
+  phone?: string;
 };
 
 export type AttachCustomerResult =
@@ -22,25 +25,34 @@ export type AttachCustomerResult =
     };
 
 /**
- * Insert or merge a directory row. Same token → same `CUST_…` id.
- * Addresses append; preferences are never wiped.
+ * Insert or merge a customer. Matches an existing customer by phone number
+ * first (0803… = 234803…), then by name ignoring case and extra spaces, so
+ * there are never duplicates. Placeholder names ("Walk-in / Inquiry #014")
+ * never create a customer. Addresses append; preferences are never wiped.
  */
 export async function upsertCustomer(
   input: UpsertCustomerInput,
 ): Promise<Customer | null> {
-  const name = input.name.trim();
-  if (!name || isWalkInName(name) || !toIdToken(name)) return null;
-
-  const customer_id = customerId(name);
+  const name = input.name.trim().replace(/\s+/g, " ");
+  const walkIn = !name || isWalkInName(name) || !toIdToken(name);
   const address = input.address?.trim() ?? "";
-  const existing = await db.customers.get(customer_id);
+  const phoneRaw = input.phone?.trim() ?? "";
+  const phone = phoneRaw ? (normalisePhone(phoneRaw) ?? phoneRaw) : "";
+
+  const all = await db.customers.toArray();
+  let existing = findCustomerIn(all, { name: walkIn ? "" : name, phone });
+  if (!existing && !walkIn) {
+    existing = await db.customers.get(customerId(name));
+  }
 
   if (!existing) {
+    if (walkIn) return null;
     const created: Customer = {
-      customer_id,
+      customer_id: customerId(name),
       name,
       saved_addresses: address ? [address] : [],
       preferences: [],
+      ...(phone ? { phone } : {}),
     };
     await db.customers.add(created);
     return created;
@@ -49,18 +61,18 @@ export async function upsertCustomer(
   const saved_addresses = [...existing.saved_addresses];
   if (
     address &&
-    !saved_addresses.some(
-      (row) => row.toLowerCase() === address.toLowerCase(),
-    )
+    !saved_addresses.some((row) => row.toLowerCase() === address.toLowerCase())
   ) {
     saved_addresses.push(address);
   }
 
+  // An existing customer always keeps the name already saved (a match by
+  // name differs only in case or spacing; a match by phone is the same person).
   const next: Customer = {
     ...existing,
-    name: existing.name.length >= name.length ? existing.name : name,
     saved_addresses,
     preferences: existing.preferences,
+    ...(phone ? { phone } : {}),
   };
   await db.customers.put(next);
   return next;
@@ -99,6 +111,7 @@ export async function attachCustomerToWalkInOrder(
 
     await db.orders.update(order.order_id, {
       customer_name: customer.name,
+      customer_id: customer.customer_id,
       delivery_address,
     });
 
@@ -114,24 +127,34 @@ export async function attachCustomerToWalkInOrder(
 }
 
 /**
- * Saves (or clears) a customer's phone number. Writes the customers store
- * only: never stock, the ledger or order status. A valid number is stored as
- * international digits; anything else is kept exactly as typed (it is simply
- * treated as missing when sending). Saving is never blocked.
+ * Saves (or clears) a customer's phone number by id. Writes the customers
+ * store only: never stock, the ledger or order status. A valid number is
+ * stored as international digits; anything else is kept exactly as typed (it
+ * is simply treated as missing when sending). Saving is never blocked.
  */
-export async function setCustomerPhone(
-  name: string,
+export async function saveCustomerPhone(
+  customer_id: string,
   rawPhone: string,
 ): Promise<"saved" | "cleared" | "no_customer"> {
-  if (isWalkInName(name)) return "no_customer";
-  const trimmed = rawPhone.trim();
-  const existing =
-    (await db.customers.get(customerId(name))) ??
-    (await upsertCustomer({ name }));
+  const existing = await db.customers.get(customer_id);
   if (!existing) return "no_customer";
+  const trimmed = rawPhone.trim();
   const next: Customer = { ...existing };
   if (trimmed) next.phone = normalisePhone(trimmed) ?? trimmed;
   else delete next.phone;
   await db.customers.put(next);
   return trimmed ? "saved" : "cleared";
+}
+
+/** Same, finding (or creating) the customer by name. Walk-ins have no record. */
+export async function setCustomerPhone(
+  name: string,
+  rawPhone: string,
+): Promise<"saved" | "cleared" | "no_customer"> {
+  if (isWalkInName(name)) return "no_customer";
+  const all = await db.customers.toArray();
+  const existing =
+    findCustomerIn(all, { name }) ?? (await upsertCustomer({ name }));
+  if (!existing) return "no_customer";
+  return saveCustomerPhone(existing.customer_id, rawPhone);
 }

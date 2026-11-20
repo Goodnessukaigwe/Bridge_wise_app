@@ -11,7 +11,10 @@ import {
   type FormEvent,
 } from "react";
 import { isWalkInName } from "@/lib/ai/identity";
-import { attachCustomerToWalkInOrder, setCustomerPhone } from "@/lib/db/customers";
+import { attachCustomerToWalkInOrder, saveCustomerPhone, setCustomerPhone } from "@/lib/db/customers";
+import { CustomerSearch } from "@/components/customers/CustomerSearch";
+import { formatPhoneDisplay } from "@/lib/whatsapp";
+import { buildCustomerIndex, findCustomerIn } from "@/lib/db/customerMatch";
 import { customerId } from "@/lib/db/dexie";
 import {
   cancelOrArchiveOrder,
@@ -238,21 +241,25 @@ function WalkInCustomerPicker({
   );
 }
 
+export type NewOrderPrefill = { name: string; phone: string; token?: number };
+
 function NewInquirySheet({
   skus,
   customers,
+  prefill,
   onClose,
 }: {
   skus: Sku[];
   customers: Customer[];
+  prefill?: NewOrderPrefill | null;
   onClose: () => void;
 }) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
-  const [name, setName] = useState("");
+  const [name, setName] = useState(prefill?.name ?? "");
   const [address, setAddress] = useState("");
-  const [phone, setPhone] = useState("");
-  const [phoneTouched, setPhoneTouched] = useState(false);
+  const [phone, setPhone] = useState(prefill?.phone ?? "");
+  const [phoneTouched, setPhoneTouched] = useState(!!prefill?.phone);
   const [skuId, setSkuId] = useState(skus[0]?.sku_id ?? "");
   const [qty, setQty] = useState("1");
   const [error, setError] = useState<string | null>(null);
@@ -278,7 +285,7 @@ function NewInquirySheet({
   useEffect(() => {
     if (phoneTouched) return;
     const known = name.trim()
-      ? customers.find((c) => c.customer_id === customerId(name.trim()))
+      ? findCustomerIn(customers, { name })
       : undefined;
     setPhone(known?.phone ?? "");
   }, [name, customers, phoneTouched]);
@@ -310,9 +317,8 @@ function NewInquirySheet({
         items: [{ product_id: skuId, quantity: parsedQty }],
         capture_method: "manual",
         intent_classification: "INQUIRY",
+        customer_phone: phone,
       });
-      // Separate, customer-only write: remember the number for next time.
-      if (phone.trim()) await setCustomerPhone(customer, phone);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save the order. Please try again.");
@@ -483,29 +489,25 @@ function OrderDetailSheet({
   const unparsed = pending && order.items.length === 0;
   const needsRestock = pending && !unparsed && orderNeedsRestock(order, skus);
   const walkIn = isWalkInName(order.customer_name);
-  const linked = walkIn
-    ? undefined
-    : customers.find(
-        (c) => c.customer_id === customerId(order.customer_name),
-      );
+  const index = useMemo(() => buildCustomerIndex(customers), [customers]);
+  const linked = index.forOrder(order);
   const gross = orderGross(order.items);
   const snippet =
     order.delivery_address.trim() || linked?.saved_addresses[0] || "";
   const rawSnippet = order.raw_text?.trim() ?? "";
 
   const history = useMemo(() => {
-    if (walkIn) return [];
-    const cid = customerId(order.customer_name);
+    if (!linked) return [];
     return newestFirst(
       allOrders.filter(
         (o) =>
           o.status === "CONFIRMED_SALE" &&
           o.ledger_committed &&
           o.order_id !== order.order_id &&
-          customerId(o.customer_name) === cid,
+          index.forOrder(o)?.customer_id === linked.customer_id,
       ),
     );
-  }, [allOrders, order, walkIn]);
+  }, [allOrders, order, linked, index]);
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -516,7 +518,7 @@ function OrderDetailSheet({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const storedPhone = linked?.phone ?? "";
+  const storedPhone = formatPhoneDisplay(linked?.phone);
 
   // Pre-fill from the saved number whenever the customer changes.
   useEffect(() => {
@@ -524,7 +526,8 @@ function OrderDetailSheet({
   }, [storedPhone, order.order_id]);
 
   async function savePhone() {
-    await setCustomerPhone(order.customer_name, phoneDraft);
+    if (linked) await saveCustomerPhone(linked.customer_id, phoneDraft);
+    else await setCustomerPhone(order.customer_name, phoneDraft);
     setPhoneNote(
       phoneDraft.trim() && !normalisePhone(phoneDraft)
         ? "Saved. This number may not work on WhatsApp, so check it."
@@ -561,7 +564,7 @@ function OrderDetailSheet({
               </h2>
               <p className="text-[13px] font-medium text-[#55517F]">
                 {orderLabel(order)}
-                {linked?.phone ? ` · ${linked.phone}` : ""}
+                {linked?.phone ? ` · ${formatPhoneDisplay(linked.phone)}` : ""}
               </p>
             </div>
             <button
@@ -652,7 +655,7 @@ function OrderDetailSheet({
                 {intentLabel(order)} · {captureLabel(order.capture_method)}
               </p>
 
-              {!walkIn ? (
+              {!walkIn || linked ? (
                 <div className="mt-3 rounded-2xl bg-[#F4F3FF] px-3 py-3">
                   <PhoneField
                     value={phoneDraft}
@@ -765,7 +768,7 @@ function OrderDetailSheet({
             <div>
               {linked?.phone ? (
                 <p className="amount mb-2 text-[14px] font-semibold text-[#55517F]">
-                  {order.customer_name} · {linked.phone}
+                  {order.customer_name} · {formatPhoneDisplay(linked.phone)}
                 </p>
               ) : null}
               {history.length === 0 ? (
@@ -888,11 +891,20 @@ function DevShortcuts({
   );
 }
 
-export function OrderStream() {
+export function OrderStream({
+  onOpenCustomer,
+  newOrderFor,
+  onNewOrderConsumed,
+}: {
+  onOpenCustomer: (customerId: string) => void;
+  newOrderFor?: NewOrderPrefill | null;
+  onNewOrderConsumed?: () => void;
+}) {
   const orders = useOrders();
   const skus = useSkus();
   const customers = useCustomers();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [prefill, setPrefill] = useState<NewOrderPrefill | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -908,16 +920,24 @@ export function OrderStream() {
     return () => window.clearTimeout(t);
   }, [soldName]);
 
+  // "New order" from a customer page or "Add as new customer" in search.
+  useEffect(() => {
+    if (!newOrderFor) return;
+    setPrefill(newOrderFor);
+    setSheetOpen(true);
+    onNewOrderConsumed?.();
+  }, [newOrderFor, onNewOrderConsumed]);
+
   const visible = useMemo(
     () => newestFirst((orders ?? []).filter(isInboxVisible)),
     [orders],
   );
 
-  const phoneByCustomer = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const c of customers ?? []) if (c.phone) m.set(c.customer_id, c.phone);
-    return m;
-  }, [customers]);
+  const customerIndex = useMemo(
+    () => buildCustomerIndex(customers ?? []),
+    [customers],
+  );
+  const phoneOf = (order: Order) => customerIndex.forOrder(order)?.phone;
 
   const selectedOrder = useMemo(
     () =>
@@ -1063,10 +1083,20 @@ export function OrderStream() {
             ? `${waiting} order${waiting !== 1 ? "s" : ""} not paid yet`
             : "All your orders are sold"}
       </p>
+      <CustomerSearch
+        onOpenCustomer={onOpenCustomer}
+        onAddNew={(who) => {
+          setPrefill(who);
+          setSheetOpen(true);
+        }}
+      />
       <button
         type="button"
-        onClick={() => setSheetOpen(true)}
-        className="btn btn-primary mt-4 min-h-[54px] w-full"
+        onClick={() => {
+          setPrefill(null);
+          setSheetOpen(true);
+        }}
+        className="btn btn-primary mt-3 min-h-[54px] w-full"
       >
         <Plus className="size-5" strokeWidth={2.5} aria-hidden />
         New order
@@ -1170,9 +1200,9 @@ export function OrderStream() {
                       <p className="truncate text-[15px] font-bold text-[#0F0A2E]">
                         {order.customer_name}
                       </p>
-                      {phoneByCustomer.get(customerId(order.customer_name)) ? (
+                      {phoneOf(order) ? (
                         <p className="amount truncate text-[12px] text-[#55517F]">
-                          {phoneByCustomer.get(customerId(order.customer_name))}
+                          {formatPhoneDisplay(phoneOf(order))}
                         </p>
                       ) : null}
                       <span
@@ -1266,6 +1296,7 @@ export function OrderStream() {
         <NewInquirySheet
           skus={catalog}
           customers={customers}
+          prefill={prefill}
           onClose={() => setSheetOpen(false)}
         />
       ) : null}
@@ -1298,7 +1329,7 @@ export function OrderStream() {
       receiptOrder.ledger_committed ? (
         <ReceiptSheet
           order={receiptOrder}
-          phone={phoneByCustomer.get(customerId(receiptOrder.customer_name))}
+          phone={phoneOf(receiptOrder)}
           onClose={() => setReceiptOrderId(null)}
         />
       ) : null}

@@ -112,6 +112,10 @@ export interface Order {
   intent_classification?: IntentClassification;
   payment_signal_detected?: boolean;
   suggested_status?: SuggestedConfirmStatus;
+  /** Link to the customers store. Optional and not indexed. */
+  customer_id?: string;
+  /** Phone given when the order was created (as typed). Optional, not indexed. */
+  customer_phone?: string;
 }
 
 /** Later Supabase jobs can reuse `kind`; Phase 14 only enqueues `parse`. */

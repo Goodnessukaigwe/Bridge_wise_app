@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractPhone, normalisePhone, whatsappUrl } from "./whatsapp";
+import { extractPhone, formatPhoneDisplay, normalisePhone, whatsappUrl } from "./whatsapp";
 
 describe("normalisePhone", () => {
   it("handles common Nigerian formats", () => {
@@ -40,5 +40,14 @@ describe("extractPhone", () => {
   it("returns null when there is no number", () => {
     expect(extractPhone("Chioma Nwosu")).toBeNull();
     expect(extractPhone("")).toBeNull();
+  });
+});
+
+describe("formatPhoneDisplay", () => {
+  it("shows Nigerian numbers locally and keeps odd input", () => {
+    expect(formatPhoneDisplay("2348031234567")).toBe("0803 123 4567");
+    expect(formatPhoneDisplay("447700900123")).toBe("+447700900123");
+    expect(formatPhoneDisplay("call me")).toBe("call me");
+    expect(formatPhoneDisplay(undefined)).toBe("");
   });
 });

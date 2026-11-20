@@ -6,7 +6,7 @@ import { BusinessForm } from "@/components/shell/BusinessSheet";
 import { loadBusiness, type Business } from "@/lib/business";
 import { db } from "@/lib/db/dexie";
 import { friendlyMessage } from "@/lib/receipt/helpers";
-import { normalisePhone, openLink, whatsappUrl } from "@/lib/whatsapp";
+import { formatPhoneDisplay, normalisePhone, openLink, whatsappUrl } from "@/lib/whatsapp";
 import type { Order } from "@/types/bridgewise";
 
 function isAbort(err: unknown): boolean {
@@ -77,7 +77,7 @@ export function ReceiptSheet({
         const out = await buildReceiptPdf({
           order,
           business,
-          customerPhone: phone,
+          customerPhone: phone ? formatPhoneDisplay(phone) : undefined,
           paidAt: sale?.created_at ?? order.created_at,
         });
         if (!cancelled) setFile(out.file);
@@ -138,7 +138,7 @@ export function ReceiptSheet({
               </h2>
               <p className="truncate text-[16px] font-bold text-[#17104A]">{order.customer_name}</p>
               <p className="amount text-[14px] text-[#55517F]">
-                {phone ? phone : "No phone number saved"}
+                {phone ? formatPhoneDisplay(phone) : "No phone number saved"}
               </p>
             </div>
             <button ref={closeRef} type="button" onClick={onClose} aria-label="Close" className="icon-btn shrink-0 bg-[#F1F0F8] text-[#3B3670]">

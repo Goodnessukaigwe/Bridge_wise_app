@@ -88,3 +88,18 @@ export function extractPhone(text: string | null | undefined): string | null {
   if (!match) return null;
   return normalisePhone(match[0]) ?? match[0].replace(/[^\d+]/g, "");
 }
+
+/**
+ * How a saved number is shown: Nigerian numbers as 0803 123 4567, other valid
+ * numbers as +<digits>, anything else exactly as typed.
+ */
+export function formatPhoneDisplay(phone: string | undefined | null): string {
+  if (!phone) return "";
+  const n = normalisePhone(phone);
+  if (!n) return phone.trim();
+  if (n.startsWith("234") && n.length === 13) {
+    const l = `0${n.slice(3)}`;
+    return `${l.slice(0, 4)} ${l.slice(4, 7)} ${l.slice(7)}`;
+  }
+  return `+${n}`;
+}

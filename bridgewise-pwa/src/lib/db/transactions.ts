@@ -31,6 +31,8 @@ export type CreatePendingOrderInput = {
   customer_name: string;
   items: Array<{ product_id: string; quantity: number }>;
   delivery_address?: string;
+  /** Optional phone as typed; used to match or save the customer. */
+  customer_phone?: string;
   capture_method?: CaptureMethod;
   date_key?: string;
   created_at?: number;
@@ -555,9 +557,18 @@ export async function createPendingOrder(
       input.delivery_address ?? "",
       input.raw_text,
     );
+    const customer = await upsertCustomer({
+      name: customer_name,
+      address: delivery_address,
+      phone: input.customer_phone,
+    });
     const order: Order = {
       order_id: nextOrderId(customer_name, dateKey, seq),
       customer_name,
+      ...(customer ? { customer_id: customer.customer_id } : {}),
+      ...(input.customer_phone?.trim()
+        ? { customer_phone: input.customer_phone.trim() }
+        : {}),
       items: lines,
       delivery_address,
       status: "PENDING_INQUIRY",
@@ -578,7 +589,6 @@ export async function createPendingOrder(
       ...(input.raw_text?.trim() ? { raw_text: input.raw_text.trim() } : {}),
     };
     await db.orders.add(order);
-    await upsertCustomer({ name: customer_name, address: delivery_address });
     return order;
   });
 }
@@ -612,9 +622,14 @@ export async function createPendingDraft(
     const identity = resolveCustomerIdentity(raw, seq);
     const customer_name = identity.name;
     const delivery_address = identity.address;
+    const customer = await upsertCustomer({
+      name: customer_name,
+      address: delivery_address,
+    });
     const order: Order = {
       order_id: nextOrderId(customer_name, dateKey, seq),
       customer_name,
+      ...(customer ? { customer_id: customer.customer_id } : {}),
       items: [],
       delivery_address,
       status: "PENDING_INQUIRY",
@@ -627,7 +642,6 @@ export async function createPendingDraft(
       intent_classification: "INQUIRY",
     };
     await db.orders.add(order);
-    await upsertCustomer({ name: customer_name, address: delivery_address });
     return order;
   });
 }
@@ -678,8 +692,14 @@ export async function applyParseToPendingOrder(
         order.raw_text,
       );
 
+      const customer = await upsertCustomer({
+        name: customer_name,
+        address: delivery_address,
+        phone: order.customer_phone,
+      });
       await db.orders.update(order.order_id, {
         customer_name,
+        ...(customer ? { customer_id: customer.customer_id } : {}),
         delivery_address,
         items: lines,
         intent_classification: parsed.intent_classification,
@@ -688,7 +708,6 @@ export async function applyParseToPendingOrder(
           ? { suggested_status: parsed.suggested_status }
           : {}),
       });
-      await upsertCustomer({ name: customer_name, address: delivery_address });
     },
   );
 }
