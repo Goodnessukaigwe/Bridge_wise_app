@@ -11,7 +11,7 @@ const withPWA = withPWAInit({
     cacheId: "onrecord-v2",
     runtimeCaching: [
       {
-        urlPattern: /\/api\/parse(?:\?|$)/,
+        urlPattern: /\/api\/(?:parse|agent)(?:\?|$)/,
         handler: "NetworkOnly",
         method: "POST",
       },

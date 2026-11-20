@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
+import type { ChatMessage } from "@/lib/agent/types";
 import type {
   Customer,
   DailyStatement,
@@ -18,6 +19,7 @@ export class BridgeWiseDB extends Dexie {
   daily_statements!: EntityTable<DailyStatement, "date_key">;
   customers!: EntityTable<Customer, "customer_id">;
   sync_queue!: EntityTable<SyncQueueRow, "id">;
+  chat_messages!: EntityTable<ChatMessage, "id">;
 
   constructor() {
     super("BridgeWise");
@@ -30,6 +32,11 @@ export class BridgeWiseDB extends Dexie {
     });
     this.version(2).stores({
       sync_queue: "&id, kind, created_at",
+    });
+    // Assistant chat (text, cards, small thumbnails). New store only: every
+    // existing store is carried over untouched.
+    this.version(3).stores({
+      chat_messages: "&id, at",
     });
   }
 }
